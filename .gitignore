@@ -1,0 +1,21 @@
+# Build artifacts
+build/
+dist/
+*.spec
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+
+# Remote connection files
+remote_bat*.bat
+remote_start*.sh
+
+# Session files
+SESSION_LOG.md
+SESSION_HISTORY.md
+
+# OS
+Thumbs.db
+.DS_Store
