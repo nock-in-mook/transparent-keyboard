@@ -65,6 +65,11 @@ VK_HOME = 0x24
 VK_F13 = 0x7C
 VK_END = 0x23
 VK_KANJI = 0x19
+VK_ESCAPE = 0x1B
+VK_LEFT = 0x25
+VK_UP = 0x26
+VK_RIGHT = 0x27
+VK_DOWN = 0x28
 
 
 # --- SendInput 構造体 ---
@@ -215,6 +220,13 @@ def open_screenshot_folder():
     ss_dir = os.path.join(tempfile.gettempdir(), 'claude_screenshots')
     os.makedirs(ss_dir, exist_ok=True)
     os.startfile(ss_dir)
+
+
+def open_apps_folder():
+    """自作アプリフォルダをエクスプローラーで開く"""
+    apps_dir = r'D:\Dropbox\.★自作アプリ2026-★'
+    if os.path.exists(apps_dir):
+        os.startfile(apps_dir)
 
 
 class TransparentKeyboard:
@@ -503,7 +515,18 @@ class TransparentKeyboard:
         NUM_W = 3    # 数字キー幅(小)
         FUNC_W = 5   # 機能キー幅(大): 📷↑, 半/全, 📁, PrtSc 共通
 
-        # Row 0: 1 2 3 4 5 | 📷↑ 半/全
+        # Row 0: ESC ← ↓ ↑ → | ★Apps
+        r_nav = self._reg(tk.Frame(left))
+        r_nav.pack(fill='x', pady=1)
+        self._btn(r_nav, 'ESC', lambda: self._act(lambda: send_key(VK_ESCAPE)),
+                  style='num').pack(side='left', padx=1, fill='both', expand=True)
+        for arrow, vk in [('←', VK_LEFT), ('↓', VK_DOWN), ('↑', VK_UP), ('→', VK_RIGHT)]:
+            b = self._btn(r_nav, arrow, lambda v=vk: self._act(lambda: send_key(v)), style='num')
+            b.pack(side='left', padx=1, fill='both', expand=True)
+        self._btn(r_nav, '★Apps', lambda: open_apps_folder(),
+                  style='num').pack(side='left', padx=1, fill='both', expand=True)
+
+        # Row 1: 1 2 3 4 5 | 📷↑ 半/全
         r0 = self._reg(tk.Frame(left))
         r0.pack(fill='x', pady=1)
         for n in '12345':
