@@ -492,6 +492,7 @@ class TransparentKeyboard:
         for w in (hdr,):
             w.bind('<Button-1>', self._drag_start)
             w.bind('<B1-Motion>', self._drag_move)
+            w.bind('<Double-Button-1>', lambda e: self.root.iconify())
 
         # メインエリア: Enter(右) + 左キー群
         body = self._reg(tk.Frame(self.root))
@@ -576,7 +577,7 @@ class TransparentKeyboard:
             b = self._btn(r2, label, cmd)
             b.pack(side='left', padx=1, fill='both', expand=True)
 
-        # Row 3: F13 /remote-control /resume
+        # Row 3: F13 Ctrl+A /remote /resume
         r3 = self._reg(tk.Frame(left))
         r3.pack(fill='x', pady=(1, 0))
 
@@ -590,7 +591,9 @@ class TransparentKeyboard:
 
         self._btn(r3, 'F13', lambda: self._act(lambda: send_key(VK_F13)),
                   style='normal').pack(side='left', padx=1, fill='x')
-        self._btn(r3, '/remote-control', lambda: type_cmd('/remote-control'),
+        self._btn(r3, 'CtrlA', lambda: self._act(lambda: send_combo(VK_CONTROL, 0x41)),
+                  style='normal').pack(side='left', padx=1, fill='x')
+        self._btn(r3, '/remote', lambda: type_cmd('/remote-control'),
                   style='normal').pack(side='left', padx=1, fill='x', expand=True)
         self._btn(r3, '/resume', lambda: type_cmd('/resume'),
                   style='normal').pack(side='left', padx=1, fill='x', expand=True)
