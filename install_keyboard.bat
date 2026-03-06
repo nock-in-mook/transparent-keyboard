@@ -5,8 +5,8 @@ echo   透明キーボード インストーラ
 echo ========================================
 echo.
 
-set "EXE_PATH=D:\Dropbox\.★自作アプリ2026-★\透明キーボード\透明キーボード.exe"
-set "ICO_PATH=D:\Dropbox\.★自作アプリ2026-★\透明キーボード\transparent_keyboard.ico"
+set "EXE_PATH=D:\Dropbox\_Apps2026\透明キーボード\透明キーボード.exe"
+set "ICO_PATH=D:\Dropbox\_Apps2026\透明キーボード\transparent_keyboard.ico"
 set "SHORTCUT_NAME=透明キーボード"
 
 REM EXE存在確認
