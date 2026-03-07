@@ -62,7 +62,6 @@ VK_SNAPSHOT = 0x2C
 VK_SHIFT = 0x10
 VK_INSERT = 0x2D
 VK_HOME = 0x24
-VK_F13 = 0x7C
 VK_END = 0x23
 VK_KANJI = 0x19
 VK_ESCAPE = 0x1B
@@ -224,9 +223,29 @@ def open_screenshot_folder():
 
 def open_apps_folder():
     """自作アプリフォルダをエクスプローラーで開く"""
-    apps_dir = r'D:\Dropbox\.★自作アプリ2026-★'
+    apps_dir = r'D:\Dropbox\_Apps2026'
     if os.path.exists(apps_dir):
         os.startfile(apps_dir)
+
+
+def bring_terminals_to_front():
+    """全Windows Terminalウィンドウを最前面に出す"""
+    hwnds = []
+
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+    def enum_callback(hwnd, lparam):
+        if user32.IsWindowVisible(hwnd):
+            cls_buf = ctypes.create_unicode_buffer(256)
+            user32.GetClassNameW(hwnd, cls_buf, 256)
+            if 'CASCADIA_HOSTING_WINDOW_CLASS' in cls_buf.value:
+                hwnds.append(hwnd)
+        return True
+
+    user32.EnumWindows(enum_callback, 0)
+    for hwnd in reversed(hwnds):
+        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+        user32.SetForegroundWindow(hwnd)
+        time.sleep(0.05)
 
 
 class TransparentKeyboard:
@@ -579,7 +598,7 @@ class TransparentKeyboard:
 
         # Row 3: F13 Ctrl+A /remote /resume
         r3 = self._reg(tk.Frame(left))
-        r3.pack(fill='x', pady=(1, 0))
+        r3.pack(fill='x', pady=1)
 
         def type_cmd(text):
             """テキストを入力してEnter"""
@@ -589,10 +608,10 @@ class TransparentKeyboard:
                 send_key(VK_RETURN)
             self._act(action)
 
-        self._btn(r3, 'F13', lambda: self._act(lambda: send_key(VK_F13)),
-                  style='normal').pack(side='left', padx=1, fill='x')
+        self._btn(r3, '🪟🪟', lambda: bring_terminals_to_front(),
+                  style='normal').pack(side='left', padx=1, fill='x', expand=True)
         self._btn(r3, 'CtrlA', lambda: self._act(lambda: send_combo(VK_CONTROL, 0x41)),
-                  style='normal').pack(side='left', padx=1, fill='x')
+                  style='normal').pack(side='left', padx=1, fill='x', expand=True)
         self._btn(r3, '/remote', lambda: type_cmd('/remote-control'),
                   style='normal').pack(side='left', padx=1, fill='x', expand=True)
         self._btn(r3, '/resume', lambda: type_cmd('/resume'),
