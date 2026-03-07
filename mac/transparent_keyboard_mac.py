@@ -1,9 +1,9 @@
 """
 透明キーボード Mac版 - デスクトップオーバーレイ
 フォーカスを奪わずにキー送信するmacOS用オーバーレイキーボード。
+Windows版と同じレイアウト・機能を提供。
 
 必要:
-  brew install python3
   pip3 install pyobjc-framework-Cocoa pyobjc-framework-Quartz
 
 権限:
@@ -18,7 +18,7 @@ import tempfile
 import datetime
 
 import objc
-from Foundation import NSObject, NSMakeRect, NSMakePoint, NSPointInRect
+from Foundation import NSObject, NSMakeRect, NSMakePoint, NSPointInRect, NSTimer
 from AppKit import (
     NSApplication,
     NSPanel, NSView,
@@ -67,9 +67,7 @@ KC = {
     'space': 49,
     'f13': 105,
     'tab': 48,
-    # 文字キー
-    'a': 0, 'c': 8, 'v': 9, 'z': 6, 'u': 32,
-    # 数字キー
+    'a': 0, 'c': 8, 'e': 14, 'v': 9, 'z': 6, 'u': 32,
     '0': 29, '1': 18, '2': 19, '3': 20, '4': 21,
     '5': 23, '6': 22, '7': 26, '8': 28, '9': 25,
 }
@@ -119,7 +117,6 @@ def paste_screenshot():
     os.makedirs(ss_dir, exist_ok=True)
     ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     path = os.path.join(ss_dir, f'ss_{ts}.png')
-    # PyObjCでクリップボード画像を直接保存
     pb = NSPasteboard.generalPasteboard()
     data = pb.dataForType_('public.png')
     if data:
@@ -132,6 +129,36 @@ def open_screenshot_folder():
     ss_dir = os.path.join(tempfile.gettempdir(), 'claude_screenshots')
     os.makedirs(ss_dir, exist_ok=True)
     subprocess.Popen(['open', ss_dir])
+
+
+def open_apps_folder():
+    """アプリフォルダをFinderで開く"""
+    candidates = [
+        os.path.expanduser('~/Library/CloudStorage/Dropbox/_Apps2026'),
+        os.path.expanduser('~/Dropbox/_Apps2026'),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            subprocess.Popen(['open', path])
+            return
+    subprocess.Popen(['open', os.path.expanduser('~')])
+
+
+def bring_terminals_to_front():
+    """全ターミナルウィンドウを最前面に出す"""
+    script = '''
+    tell application "System Events"
+        set termApps to {}
+        if exists process "Terminal" then set end of termApps to "Terminal"
+        if exists process "iTerm2" then set end of termApps to "iTerm2"
+        repeat with appName in termApps
+            tell process (appName as text)
+                set frontmost to true
+            end tell
+        end repeat
+    end tell
+    '''
+    subprocess.Popen(['osascript', '-e', script])
 
 
 # =============================================
@@ -158,7 +185,7 @@ def rgb(r, g, b, a=1.0):
 
 
 # =============================================
-# キーボードビュー（全ボタンを1つのビューで描画）
+# キーボードビュー
 # =============================================
 class KeyboardView(NSView):
 
@@ -167,7 +194,7 @@ class KeyboardView(NSView):
         if self is None:
             return None
         self._keyboard = None
-        self._buttons = []       # [(NSRect, label, action, style)]
+        self._buttons = []
         self._pressed_idx = -1
         self._dragging = False
         self._drag_start = None
@@ -177,53 +204,52 @@ class KeyboardView(NSView):
 
     @objc.python_method
     def setup(self, keyboard):
-        """キーボード本体への参照をセットしてレイアウト構築"""
         self._keyboard = keyboard
         self._build_layout()
 
     def isFlipped(self):
-        """座標系を上→下に（macOSデフォルトは下→上）"""
         return True
 
     def acceptsFirstMouse_(self, event):
-        """非アクティブ状態でも最初のクリックを受け付ける"""
         return True
 
     @objc.python_method
     def _build_layout(self):
-        """ボタン配置を計算"""
+        """ボタン配置（コンパクト版）"""
         W = self.frame().size.width
-        HDR_H = 22
-        BTN_H = 35
-        PAD = 2
-        ENTER_W = 55
+        HDR_H = 18
+        BTN_H = 28
+        PAD = 1
+        ENTER_W = 36
         body_w = W - ENTER_W - PAD
 
         self._buttons = []
 
-        # --- ヘッダ（ドラッグ領域）---
+        # --- ヘッダ ---
         self._header_rect = NSMakeRect(0, 0, W, HDR_H)
-        # テーマ切り替え（左端）
         self._buttons.append((
-            NSMakeRect(PAD, 2, 20, HDR_H - 4),
+            NSMakeRect(PAD, 1, 16, HDR_H - 2),
             '●', lambda: self._keyboard.cycle_theme(), 'theme'
         ))
-        # 閉じる（右端）
         self._buttons.append((
-            NSMakeRect(W - 24, 2, 20, HDR_H - 4),
+            NSMakeRect(W - 38, 1, 16, HDR_H - 2),
+            '━', lambda: self._keyboard.minimize(), 'minimize'
+        ))
+        self._buttons.append((
+            NSMakeRect(W - 18, 1, 16, HDR_H - 2),
             '✕', lambda: self._keyboard.close(), 'close'
         ))
 
         y = HDR_H
 
-        # --- Row 0: ESC ← ↓ ↑ → ⌘Z ---
+        # --- Row 0: ESC ← ↓ ↑ → Apps ---
         row0 = [
-            ('ESC', lambda: send_key(KC['escape'])),
-            ('←',   lambda: send_key(KC['left'])),
-            ('↓',   lambda: send_key(KC['down'])),
-            ('↑',   lambda: send_key(KC['up'])),
-            ('→',   lambda: send_key(KC['right'])),
-            ('⌘Z',  lambda: send_key(KC['z'], MOD_CMD)),
+            ('ESC',   lambda: send_key(KC['escape'])),
+            ('←',     lambda: send_key(KC['left'])),
+            ('↓',     lambda: send_key(KC['down'])),
+            ('↑',     lambda: send_key(KC['up'])),
+            ('→',     lambda: send_key(KC['right'])),
+            ('Apps',  lambda: open_apps_folder()),
         ]
         bw = body_w / len(row0)
         for i, (label, action) in enumerate(row0):
@@ -248,15 +274,13 @@ class KeyboardView(NSView):
             '📷↑', lambda: paste_screenshot(), 'key'
         ))
         x += func_w
-        # 英/日切替 = Control+Space（macOSの入力ソース切り替え）
-        # ※環境により Fn/Globe キーの場合あり。動作しなければ要調整
         self._buttons.append((
             NSMakeRect(x, y + PAD, func_w - PAD, BTN_H - PAD),
             '英/日', lambda: send_key(KC['space'], MOD_CTRL), 'key'
         ))
         y += BTN_H
 
-        # --- Row 2: 6 7 8 9 0 | 📁 📸 ---
+        # --- Row 2: 6 7 8 9 0 | 📁 PrScr ---
         x = PAD
         for n in '67890':
             self._buttons.append((
@@ -269,22 +293,22 @@ class KeyboardView(NSView):
             '📁', lambda: open_screenshot_folder(), 'key'
         ))
         x += func_w
-        # スクショ → Cmd+Shift+Ctrl+4（選択範囲をクリップボードにコピー）
         self._buttons.append((
             NSMakeRect(x, y + PAD, func_w - PAD, BTN_H - PAD),
-            '📸', lambda: send_key(KC['4'], MOD_CMD | MOD_SHIFT | MOD_CTRL), 'key'
+            'PrScr', lambda: send_key(KC['4'], MOD_CMD | MOD_SHIFT), 'key'
         ))
         y += BTN_H
 
         # --- Row 3: Copy Paste ⌃U | Home End BS ---
+        # Home = Ctrl+A（シェル行頭）、End = Ctrl+E（シェル行末）
         left_keys = [
             ('Copy',  lambda: send_key(KC['c'], MOD_CMD)),
             ('Paste', lambda: send_key(KC['v'], MOD_CMD)),
             ('⌃U',   lambda: send_key(KC['u'], MOD_CTRL)),
         ]
         right_keys = [
-            ('Home', lambda: send_key(KC['left'], MOD_CMD)),
-            ('End',  lambda: send_key(KC['right'], MOD_CMD)),
+            ('Home', lambda: send_key(KC['a'], MOD_CTRL)),
+            ('End',  lambda: send_key(KC['e'], MOD_CTRL)),
             ('BS',   lambda: send_key(KC['delete'])),
         ]
         lw = body_w * 0.5 / len(left_keys)
@@ -304,12 +328,12 @@ class KeyboardView(NSView):
             x += rw
         y += BTN_H
 
-        # --- Row 4: F13 ⌘A /remote /resume ---
+        # --- Row 4: Term ⌘A /remote /resume ---
         cmd_keys = [
-            ('F13',     lambda: send_key(KC['f13']),                    0.12),
-            ('⌘A',      lambda: send_key(KC['a'], MOD_CMD),            0.15),
-            ('/remote', lambda: type_text_enter('/remote-control'),     0.38),
-            ('/resume', lambda: type_text_enter('/resume'),             0.35),
+            ('Term',     lambda: bring_terminals_to_front(),           0.14),
+            ('⌘A',       lambda: send_key(KC['a'], MOD_CMD),          0.14),
+            ('/remote',  lambda: type_text_enter('/remote-control'),   0.38),
+            ('/resume',  lambda: type_text_enter('/resume'),           0.34),
         ]
         x = PAD
         for label, action, ratio in cmd_keys:
@@ -325,11 +349,10 @@ class KeyboardView(NSView):
         enter_h = BTN_H * 5 - PAD * 2
         self._buttons.append((
             NSMakeRect(body_w + PAD, enter_y, ENTER_W - PAD * 2, enter_h),
-            'Enter\n⏎', lambda: send_key(KC['return']), 'enter'
+            'Ent\n⏎', lambda: send_key(KC['return']), 'enter'
         ))
 
     def drawRect_(self, dirty_rect):
-        """全体描画"""
         if self._keyboard is None:
             return
 
@@ -345,12 +368,14 @@ class KeyboardView(NSView):
 
         # 各ボタン
         for i, (rect, label, action, style) in enumerate(self._buttons):
-            # ボタン背景色
             if style == 'theme':
                 next_idx = (self._keyboard.theme_idx + 1) % len(THEMES)
                 color = rgb(*THEMES[next_idx][1])
             elif style == 'close':
                 color = rgb(*theme[2])
+            elif style == 'minimize':
+                opposite_idx = (self._keyboard.theme_idx + 3) % len(THEMES)
+                color = rgb(*THEMES[opposite_idx][2])
             elif i == self._pressed_idx:
                 color = rgb(*BTN_ACTIVE)
             elif style == 'enter':
@@ -366,12 +391,15 @@ class KeyboardView(NSView):
             ).fill()
 
             # テキスト描画
-            font_size = 13 if style in ('num', 'enter') else 11
-            if style in ('theme', 'close'):
-                font_size = 10
+            font_size = 12 if style in ('num', 'enter') else 10
+            if style in ('theme', 'close', 'minimize'):
+                font_size = 9
+
+            # Termボタンは白文字で目立たせる
+            fg_color = rgb(1.0, 1.0, 1.0) if label == 'Term' else rgb(*BTN_FG)
 
             attrs = {
-                NSForegroundColorAttributeName: rgb(*BTN_FG),
+                NSForegroundColorAttributeName: fg_color,
                 NSFontAttributeName: NSFont.boldSystemFontOfSize_(font_size),
             }
             para = NSMutableParagraphStyle.alloc().init()
@@ -388,7 +416,6 @@ class KeyboardView(NSView):
 
     @objc.python_method
     def _hit_button(self, point):
-        """座標からボタンインデックスを返す（-1 = ヒットなし）"""
         for i, (rect, _, _, _) in enumerate(self._buttons):
             if NSPointInRect(point, rect):
                 return i
@@ -398,16 +425,13 @@ class KeyboardView(NSView):
         point = self.convertPoint_fromView_(event.locationInWindow(), None)
         idx = self._hit_button(point)
 
-        # ヘッダのボタン以外の部分
         if idx == -1 and NSPointInRect(point, self._header_rect):
             now = time.time()
-            # ダブルクリック判定（0.4秒以内）
             if now - self._last_click_time < 0.4:
-                self._keyboard.panel.miniaturize_(None)
+                self._keyboard.minimize()
                 self._last_click_time = 0
                 return
             self._last_click_time = now
-            # ドラッグ開始
             self._dragging = True
             self._drag_start = event.locationInWindow()
             return
@@ -418,7 +442,6 @@ class KeyboardView(NSView):
     def mouseDragged_(self, event):
         if not self._dragging or self._drag_start is None:
             return
-        # スクリーン座標でウィンドウを移動
         screen_point = NSEvent.mouseLocation()
         new_x = screen_point.x - self._drag_start.x
         new_y = screen_point.y - self._drag_start.y
@@ -443,17 +466,35 @@ class KeyboardView(NSView):
 
 
 # =============================================
+# メニューバー用デリゲート（ObjCランタイムに認識される）
+# =============================================
+class MenuDelegate(NSObject):
+    def init(self):
+        self = objc.super(MenuDelegate, self).init()
+        self._keyboard = None
+        return self
+
+    @objc.IBAction
+    def showKeyboard_(self, sender):
+        if self._keyboard:
+            self._keyboard.panel.orderFront_(None)
+
+    @objc.IBAction
+    def quitApp_(self, sender):
+        NSApplication.sharedApplication().terminate_(None)
+
+
+# =============================================
 # メインクラス
 # =============================================
 class TransparentKeyboardMac:
-    # ウィンドウサイズ
-    WIDTH = 490
-    HEIGHT = 200   # header(22) + 5 rows(35*5) + padding
+    WIDTH = 312
+    HEIGHT = 160   # header(18) + 5 rows(28*5) + padding
 
     def __init__(self):
         self.theme_idx = 0
         self.app = NSApplication.sharedApplication()
-        # Dockに表示（ダブルクリックで最小化→Dockから復元可能に）
+        # Dockに表示（最小化から復帰可能）
         self.app.setActivationPolicy_(NSApplicationActivationPolicyRegular)
 
         # 画面下部中央に配置
@@ -464,7 +505,6 @@ class TransparentKeyboardMac:
 
         rect = NSMakeRect(x, y, self.WIDTH, self.HEIGHT)
 
-        # NSPanel: フォーカスを奪わない + Cmd+Tabに出ない
         style = (
             NSWindowStyleMaskBorderless
             | NSWindowStyleMaskNonactivatingPanel
@@ -473,8 +513,8 @@ class TransparentKeyboardMac:
         self.panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
             rect, style, NSBackingStoreBuffered, False
         )
-        self.panel.setFloatingPanel_(True)        # 常に最前面
-        self.panel.setHidesOnDeactivate_(False)    # アプリ切替で消えない
+        self.panel.setFloatingPanel_(True)
+        self.panel.setHidesOnDeactivate_(False)
         self.panel.setLevel_(NSFloatingWindowLevel)
         self.panel.setAlphaValue_(0.4)
         self.panel.setHasShadow_(True)
@@ -498,23 +538,38 @@ class TransparentKeyboardMac:
         self.status_item.setTitle_('⌨')
 
         menu = NSMenu.alloc().init()
-        quit_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            'Quit', 'terminate:', 'q'
+
+        # ObjCランタイムに認識されるデリゲートを使う
+        self._menu_delegate = MenuDelegate.alloc().init()
+        self._menu_delegate._keyboard = self
+
+        show_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            'Show Keyboard', 'showKeyboard:', ''
         )
+        show_item.setTarget_(self._menu_delegate)
+        menu.addItem_(show_item)
+
+        menu.addItem_(NSMenuItem.separatorItem())
+
+        quit_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            'Quit', 'quitApp:', ''
+        )
+        quit_item.setTarget_(self._menu_delegate)
         menu.addItem_(quit_item)
         self.status_item.setMenu_(menu)
 
     def cycle_theme(self):
-        """テーマ切り替え"""
         self.theme_idx = (self.theme_idx + 1) % len(THEMES)
         self.view.setNeedsDisplay_(True)
 
+    def minimize(self):
+        """パネルを隠す（メニューバーのShow Keyboardで復帰）"""
+        self.panel.orderOut_(None)
+
     def close(self):
-        """終了"""
         NSApplication.sharedApplication().terminate_(None)
 
     def run(self):
-        """メインループ"""
         self.app.run()
 
 
