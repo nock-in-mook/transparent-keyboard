@@ -455,24 +455,24 @@ class TransparentKeyboard:
 
     def _btn(self, parent, text, command, width=None, style='normal'):
         kw = {
-            'font': ('Segoe UI', 11, 'bold'),
+            'font': ('Segoe UI', 8, 'bold'),
             'bg': self.CMD_BG if style == 'cmd' else self.BTN_BG,
             'fg': self.BTN_FG,
             'activebackground': self.BTN_ACTIVE,
             'activeforeground': '#fff',
             'relief': 'solid',
             'bd': 1,
-            'padx': 5,
-            'pady': 4,
+            'padx': 3,
+            'pady': 2,
             'cursor': 'hand2',
             'command': command,
         }
         if style == 'num':
-            kw['font'] = ('Segoe UI', 12, 'bold')
-            kw['padx'] = 2
-            kw['pady'] = 2
+            kw['font'] = ('Segoe UI', 9, 'bold')
+            kw['padx'] = 1
+            kw['pady'] = 1
         if style == 'icon':
-            kw['font'] = ('Segoe UI Emoji', 13)
+            kw['font'] = ('Segoe UI Emoji', 9)
             kw['pady'] = 0
         b = tk.Button(parent, text=text, **kw)
         if width:
@@ -486,24 +486,24 @@ class TransparentKeyboard:
 
     def _build_ui(self):
         # ヘッダ（ドラッグ用）
-        hdr = self._reg(tk.Frame(self.root, height=20, cursor='fleur'), 'header')
+        hdr = self._reg(tk.Frame(self.root, height=14, cursor='fleur'), 'header')
         hdr.pack(fill='x')
         hdr.pack_propagate(False)
 
         # 左端: テーマ切り替えボタン
-        self.theme_btn = self._reg(tk.Label(hdr, text='●', font=('Segoe UI', 10),
+        self.theme_btn = self._reg(tk.Label(hdr, text='●', font=('Segoe UI', 7),
                                   cursor='hand2', fg='#fff'), 'header')
         self.theme_btn.pack(side='left', padx=4)
         self.theme_btn.bind('<Button-1>', self._cycle_theme)
 
         # 右端: 閉じるボタン
-        x_btn = self._reg(tk.Label(hdr, text='✕', font=('Segoe UI', 8, 'bold'),
+        x_btn = self._reg(tk.Label(hdr, text='✕', font=('Segoe UI', 6, 'bold'),
                          fg='#ddd', cursor='hand2'), 'header')
         x_btn.pack(side='right', padx=4)
         x_btn.bind('<Button-1>', lambda e: self.root.destroy())
 
         # 最小化ボタン（閉じるボタンから離す、反対色で目立たせる）
-        self.min_btn = tk.Label(hdr, text='━', font=('Segoe UI', 7, 'bold'),
+        self.min_btn = tk.Label(hdr, text='━', font=('Segoe UI', 5, 'bold'),
                                fg='#fff', cursor='hand2', relief='solid', bd=1)
         self.min_btn.pack(side='right', padx=(2, 12))
         self.min_btn.bind('<Button-1>', lambda e: self.root.iconify())
@@ -520,11 +520,11 @@ class TransparentKeyboard:
         # Enter: 右端に縦いっぱい
         enter_btn = tk.Button(
             body, text='Enter\n⏎',
-            font=('Segoe UI', 13, 'bold'),
+            font=('Segoe UI', 9, 'bold'),
             bg='#2a4a6c', fg=self.BTN_FG,
             activebackground='#3a6a9c', activeforeground='#fff',
             relief='solid', bd=1,
-            padx=10, cursor='hand2',
+            padx=6, cursor='hand2',
             command=lambda: self._act(lambda: send_key(VK_RETURN)),
         )
         enter_btn.pack(side='right', fill='y', padx=(0, 1), pady=1)
@@ -532,8 +532,8 @@ class TransparentKeyboard:
         left = self._reg(tk.Frame(body))
         left.pack(side='left', fill='both', expand=True)
 
-        NUM_W = 3    # 数字キー幅(小)
-        FUNC_W = 5   # 機能キー幅(大): 📷↑, 半/全, 📁, PrtSc 共通
+        NUM_W = 2    # 数字キー幅(小)
+        FUNC_W = 4   # 機能キー幅(大): 📷↑, 半/全, 📁, PrtSc 共通
 
         # Row 0: ESC ← ↓ ↑ → | ★Apps
         r_nav = self._reg(tk.Frame(left))
@@ -558,7 +558,7 @@ class TransparentKeyboard:
         b.pack(side='left', padx=1, fill='both', expand=False)
         hz_btn = self._btn(r0, '半/全', lambda: self._act(lambda: send_key(VK_KANJI)),
                            style='num')
-        hz_btn.configure(font=('Meiryo UI', 12, 'bold'), width=FUNC_W)
+        hz_btn.configure(font=('Meiryo UI', 9, 'bold'), width=FUNC_W)
         hz_btn.pack(side='left', padx=1, fill='both', expand=True)
 
         # Row 1: 6 7 8 9 0 | 📁 PrtSc
