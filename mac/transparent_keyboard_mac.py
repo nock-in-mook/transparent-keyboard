@@ -16,6 +16,7 @@ import os
 import sys
 import tempfile
 import datetime
+import fcntl
 
 import objc
 from Foundation import NSObject, NSMakeRect, NSMakePoint, NSPointInRect, NSTimer
@@ -111,24 +112,35 @@ def type_text_enter(text):
     send_key(KC['return'])
 
 
-def paste_screenshot():
-    """クリップボード画像をファイル保存してパスを入力"""
+def get_screenshot_dir():
+    """スクショ保存先ディレクトリを返す"""
     ss_dir = os.path.join(tempfile.gettempdir(), 'claude_screenshots')
     os.makedirs(ss_dir, exist_ok=True)
+    return ss_dir
+
+
+def take_screenshot():
+    """screencapture -i で範囲選択スクショを撮って即保存"""
+    ss_dir = get_screenshot_dir()
     ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     path = os.path.join(ss_dir, f'ss_{ts}.png')
-    pb = NSPasteboard.generalPasteboard()
-    data = pb.dataForType_('public.png')
-    if data:
-        data.writeToFile_atomically_(path, True)
-        type_text(path)
+    subprocess.Popen(['screencapture', '-i', path])
+
+
+def paste_latest_screenshot():
+    """保存先フォルダの最新画像のパスをターミナルに入力"""
+    ss_dir = get_screenshot_dir()
+    pngs = sorted(
+        [os.path.join(ss_dir, f) for f in os.listdir(ss_dir) if f.endswith('.png')],
+        key=os.path.getmtime
+    )
+    if pngs:
+        type_text(pngs[-1])
 
 
 def open_screenshot_folder():
     """スクショフォルダをFinderで開く"""
-    ss_dir = os.path.join(tempfile.gettempdir(), 'claude_screenshots')
-    os.makedirs(ss_dir, exist_ok=True)
-    subprocess.Popen(['open', ss_dir])
+    subprocess.Popen(['open', get_screenshot_dir()])
 
 
 def open_apps_folder():
@@ -271,7 +283,7 @@ class KeyboardView(NSView):
             x += num_w
         self._buttons.append((
             NSMakeRect(x, y + PAD, func_w - PAD, BTN_H - PAD),
-            '📷↑', lambda: paste_screenshot(), 'key'
+            '📷↑', lambda: paste_latest_screenshot(), 'key'
         ))
         x += func_w
         self._buttons.append((
@@ -295,7 +307,7 @@ class KeyboardView(NSView):
         x += func_w
         self._buttons.append((
             NSMakeRect(x, y + PAD, func_w - PAD, BTN_H - PAD),
-            'PrScr', lambda: send_key(KC['4'], MOD_CMD | MOD_SHIFT), 'key'
+            'PrScr', lambda: take_screenshot(), 'key'
         ))
         y += BTN_H
 
@@ -574,4 +586,11 @@ class TransparentKeyboardMac:
 
 
 if __name__ == '__main__':
+    # 多重起動防止（flockで排他ロック）
+    _lock_path = os.path.join(tempfile.gettempdir(), 'transparent_keyboard_mac.lock')
+    _lock_file = open(_lock_path, 'w')
+    try:
+        fcntl.flock(_lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except IOError:
+        sys.exit(0)
     TransparentKeyboardMac().run()
