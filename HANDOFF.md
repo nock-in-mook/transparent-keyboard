@@ -2,28 +2,20 @@
 
 ## 現在の状況
 - Windows版 v2.3: サイズ縮小（横70%・縦60%）、EXE再ビルド済み
-- Mac版 v1.1: スクショ即保存・多重起動防止を追加、動作確認OK
+- Mac版 v1.2: 即ランチャー連携・Gドライブ対応済み、動作確認OK
 - 全PC (Googleドライブ同期) で使える状態
 
-## 今回の変更（2026-03-08）
-### Mac版: スクショ即保存・多重起動防止
-- PrScrボタン: `send_key(KC['4'], MOD_CMD | MOD_SHIFT)` → `screencapture -i` で範囲選択→即ファイル保存に変更
-- 📷↑ボタン: クリップボード画像保存→最新スクショのパスをターミナルに入力する方式に変更
-- 📁ボタン: 同じ保存先フォルダ (`/tmp/claude_screenshots/`) をFinderで開く（変更なし）
-- `fcntl.flock` による多重起動防止を追加
-- コミット・プッシュ済み
+## 今回の変更（2026-03-09）
+### Mac版: 即ランチャーShowAll連携
+- `bring_terminals_to_front()` を自前AppleScript実装から即ランチャー(`folder_launcher.py --show-all`)呼び出しに変更
+- 即ランチャーMac版にも `--show-all` 引数を追加（Windows版と統一）
+- 即ランチャーが見つからない場合はAppleScriptフォールバック付き
+- Dropbox参照は全てGoogleドライブに移行済み（前回対応分含め確認済み）
 
-## Mac版: 要変更（Macで作業すること）
-Windows版で実施済みの変更をMac版にも反映する。
-
-### 1. `bring_terminals_to_front()` の変更
-- **現状**: AppleScriptでTerminal/iTerm2を最前面に出すだけ（158-172行目）
-- **変更**: Mac版の即ランチャー（`terminal_copy/folder_launcher.py`）にも `--show-all` 引数を追加し、それを呼ぶ方式に変更
-- Mac版即ランチャーのパス: `~/Library/CloudStorage/GoogleDrive-yagukyou@gmail.com/マイドライブ/_Apps2026/terminal_copy/folder_launcher.py`
-- 呼び出し例: `subprocess.Popen(['python3', script, '--show-all'])`
-
-### 2. `open_apps_folder()` のパス確認
-- 既にGoogleドライブパスに変更済み（149行目）→ 問題なし
+## 完了済みTODO
+- ✅ Mac版 `bring_terminals_to_front()` → 即ランチャー連携
+- ✅ Mac版 `open_apps_folder()` → Googleドライブパス
+- ✅ スクショ関連 → `/tmp/claude_screenshots/` でDropbox非依存
 
 ## 次のアクション
 1. **Windows版: システムトレイアイコン** — `pystray` + `Pillow` で通知領域にアイコン常駐（未着手）
