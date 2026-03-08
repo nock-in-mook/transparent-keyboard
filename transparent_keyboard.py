@@ -223,7 +223,7 @@ def open_screenshot_folder():
 
 def open_apps_folder():
     """自作アプリフォルダをエクスプローラーで開く"""
-    apps_dir = r'D:\Dropbox\_Apps2026'
+    apps_dir = r'G:\マイドライブ\_Apps2026'
     if os.path.exists(apps_dir):
         os.startfile(apps_dir)
 

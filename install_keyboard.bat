@@ -5,15 +5,15 @@ echo   透明キーボード インストーラ
 echo ========================================
 echo.
 
-set "EXE_PATH=D:\Dropbox\_Apps2026\透明キーボード\透明キーボード.exe"
-set "ICO_PATH=D:\Dropbox\_Apps2026\透明キーボード\transparent_keyboard.ico"
+set "EXE_PATH=G:\マイドライブ\_Apps2026\透明キーボード\透明キーボード.exe"
+set "ICO_PATH=G:\マイドライブ\_Apps2026\透明キーボード\transparent_keyboard.ico"
 set "SHORTCUT_NAME=透明キーボード"
 
 REM EXE存在確認
 if not exist "%EXE_PATH%" (
     echo ERROR: EXEが見つかりません
     echo %EXE_PATH%
-    echo Dropboxの同期を確認してください
+    echo Googleドライブの同期を確認してください
     pause
     exit /b 1
 )
@@ -34,7 +34,7 @@ echo.
 echo ========================================
 echo   インストール完了!
 echo.
-echo   Dropboxから直接起動するので
+echo   Googleドライブから直接起動するので
 echo   EXE更新時も自動で反映されます
 echo.
 echo   タスクバーにピン留めするには:

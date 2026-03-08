@@ -3,7 +3,7 @@
 ## 現在の状況
 - Windows版 v2.3: サイズ縮小（横70%・縦60%）、EXE再ビルド済み
 - Mac版 v1.1: スクショ即保存・多重起動防止を追加、動作確認OK
-- 全PC (Dropbox同期) で使える状態
+- 全PC (Googleドライブ同期) で使える状態
 
 ## 今回の変更（2026-03-08）
 ### Mac版: スクショ即保存・多重起動防止
@@ -21,7 +21,7 @@
 ## ファイル構成
 - `transparent_keyboard.py` — Windows版メインソース
 - `transparent_keyboard.ico` — アプリアイコン
-- `透明キーボード.exe` — ビルド済みEXE（gitignore対象、Dropbox同期で配布）
+- `透明キーボード.exe` — ビルド済みEXE（gitignore対象、Googleドライブ同期で配布）
 - `install_keyboard.bat` — ショートカット作成
 - `mac/transparent_keyboard_mac.py` — Mac版メインソース
 - `mac/run.sh` — Mac版起動スクリプト
@@ -45,3 +45,4 @@
 - アクセシビリティ権限が必須
 - スクショ: `screencapture -i` で即ファイル保存、保存先は `/tmp/claude_screenshots/`
 - 多重起動防止: `fcntl.flock` でロックファイル
+

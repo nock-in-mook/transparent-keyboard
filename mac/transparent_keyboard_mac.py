@@ -146,8 +146,7 @@ def open_screenshot_folder():
 def open_apps_folder():
     """アプリフォルダをFinderで開く"""
     candidates = [
-        os.path.expanduser('~/Library/CloudStorage/Dropbox/_Apps2026'),
-        os.path.expanduser('~/Dropbox/_Apps2026'),
+        os.path.expanduser('~/Library/CloudStorage/GoogleDrive-yagukyou@gmail.com/マイドライブ/_Apps2026'),
     ]
     for path in candidates:
         if os.path.exists(path):

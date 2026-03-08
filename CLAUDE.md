@@ -60,7 +60,7 @@ PYTHONUTF8=1 py -m PyInstaller --onefile --windowed --icon=transparent_keyboard.
 ```
 
 ## 配布方式
-- Dropbox で全PCに自動同期
+- Googleドライブ で全PCに自動同期
 - EXE を直接起動（インストール不要）
 - `install_keyboard.bat` でデスクトップとスタートメニューにショートカット作成
 - グローバル CLAUDE.md のセッション開始チェックリスト (Step 4) でショートカット有無を確認
