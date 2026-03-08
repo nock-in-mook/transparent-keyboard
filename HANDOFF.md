@@ -13,6 +13,18 @@
 - `fcntl.flock` による多重起動防止を追加
 - コミット・プッシュ済み
 
+## Mac版: 要変更（Macで作業すること）
+Windows版で実施済みの変更をMac版にも反映する。
+
+### 1. `bring_terminals_to_front()` の変更
+- **現状**: AppleScriptでTerminal/iTerm2を最前面に出すだけ（158-172行目）
+- **変更**: Mac版の即ランチャー（`terminal_copy/folder_launcher.py`）にも `--show-all` 引数を追加し、それを呼ぶ方式に変更
+- Mac版即ランチャーのパス: `~/Library/CloudStorage/GoogleDrive-yagukyou@gmail.com/マイドライブ/_Apps2026/terminal_copy/folder_launcher.py`
+- 呼び出し例: `subprocess.Popen(['python3', script, '--show-all'])`
+
+### 2. `open_apps_folder()` のパス確認
+- 既にGoogleドライブパスに変更済み（149行目）→ 問題なし
+
 ## 次のアクション
 1. **Windows版: システムトレイアイコン** — `pystray` + `Pillow` で通知領域にアイコン常駐（未着手）
 2. **Mac版: テスト継続** — 実使用での不具合洗い出し
