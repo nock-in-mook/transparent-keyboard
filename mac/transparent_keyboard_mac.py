@@ -156,20 +156,22 @@ def open_apps_folder():
 
 
 def bring_terminals_to_front():
-    """全ターミナルウィンドウを最前面に出す"""
-    script = '''
-    tell application "System Events"
-        set termApps to {}
-        if exists process "Terminal" then set end of termApps to "Terminal"
-        if exists process "iTerm2" then set end of termApps to "iTerm2"
-        repeat with appName in termApps
-            tell process (appName as text)
-                set frontmost to true
-            end tell
-        end repeat
-    end tell
-    '''
-    subprocess.Popen(['osascript', '-e', script])
+    """即ランチャーのShowAll機能で全ターミナルを最前面に出す"""
+    launcher = os.path.expanduser(
+        '~/Library/CloudStorage/GoogleDrive-yagukyou@gmail.com/マイドライブ/_Apps2026/terminal_copy/folder_launcher.py'
+    )
+    if os.path.exists(launcher):
+        subprocess.Popen(['python3', launcher, '--show-all'])
+    else:
+        # フォールバック: 即ランチャーが見つからない場合はAppleScriptで直接操作
+        script = '''
+        tell application "System Events"
+            if exists process "Terminal" then
+                tell process "Terminal" to set frontmost to true
+            end if
+        end tell
+        '''
+        subprocess.Popen(['osascript', '-e', script])
 
 
 # =============================================
