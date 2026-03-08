@@ -229,23 +229,14 @@ def open_apps_folder():
 
 
 def bring_terminals_to_front():
-    """全Windows Terminalウィンドウを最前面に出す"""
-    hwnds = []
-
-    @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
-    def enum_callback(hwnd, lparam):
-        if user32.IsWindowVisible(hwnd):
-            cls_buf = ctypes.create_unicode_buffer(256)
-            user32.GetClassNameW(hwnd, cls_buf, 256)
-            if 'CASCADIA_HOSTING_WINDOW_CLASS' in cls_buf.value:
-                hwnds.append(hwnd)
-        return True
-
-    user32.EnumWindows(enum_callback, 0)
-    for hwnd in reversed(hwnds):
-        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-        user32.SetForegroundWindow(hwnd)
-        time.sleep(0.05)
+    """即ランチャーのShowAll機能を呼び出す（再配置＋最前面）"""
+    launcher_dir = r'G:\マイドライブ\_Apps2026\terminal_copy'
+    exe = os.path.join(launcher_dir, '即ランチャー.exe')
+    script = os.path.join(launcher_dir, 'folder_launcher_win.pyw')
+    if os.path.exists(exe):
+        subprocess.Popen([exe, script, '--show-all'], cwd=launcher_dir)
+    elif os.path.exists(script):
+        subprocess.Popen(['pythonw', script, '--show-all'], cwd=launcher_dir)
 
 
 class TransparentKeyboard:
