@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(PYTHONUTF8=1 py:*)",
+      "Bash(py:*)",
+      "Bash(test:*)"
+    ]
+  }
+}
