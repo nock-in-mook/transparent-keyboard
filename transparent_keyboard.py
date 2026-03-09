@@ -458,11 +458,14 @@ class TransparentKeyboard:
         WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.POINTER(ctypes.c_int))
         hwnds = []
         title_buf = ctypes.create_unicode_buffer(256)
+        class_buf = ctypes.create_unicode_buffer(256)
 
         def enum_cb(hwnd, lParam):
             if user32.IsWindowVisible(hwnd):
                 user32.GetWindowTextW(hwnd, title_buf, 256)
-                if title_buf.value == '透明キーボード':
+                user32.GetClassNameW(hwnd, class_buf, 256)
+                # tkinterウィンドウのみ対象（ターミナル等を巻き込まない）
+                if title_buf.value == '透明キーボード' and class_buf.value == 'TkTopLevel':
                     hwnds.append(hwnd)
             return True
 
