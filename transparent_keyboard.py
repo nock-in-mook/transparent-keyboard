@@ -1,6 +1,7 @@
 """
 透明キーボード - デスクトップオーバーレイ
 クリックでキーボード入力を代替する。フォーカスを奪わずにキー送信。
+最大3つまで同時起動可能。
 """
 
 import tkinter as tk
@@ -11,13 +12,23 @@ import sys
 import os
 import subprocess
 import tempfile
+import threading
 
 # AppUserModelIDを設定（タスクバーでアプリを正しく識別し、ピン留めを可能にする）
 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("TransparentKeyboard.App.1")
 
-# 重複起動防止（Windows Mutex）
-_mutex = ctypes.windll.kernel32.CreateMutexW(None, True, "TransparentKeyboard_SingleInstance")
-if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+# 最大3インスタンスまで許可（スロット制で管理）
+MAX_INSTANCES = 3
+_instance_slot = -1
+_slot_mutex = None
+for i in range(MAX_INSTANCES):
+    m = ctypes.windll.kernel32.CreateMutexW(None, True, f"TransparentKeyboard_Slot_{i}")
+    if ctypes.windll.kernel32.GetLastError() != 183:  # スロット確保成功
+        _instance_slot = i
+        _slot_mutex = m
+        break
+if _instance_slot == -1:
+    # 3つとも埋まっている
     sys.exit(0)
 
 # Windows API
@@ -255,7 +266,8 @@ class TransparentKeyboard:
     BTN_ACTIVE = '#2a5070'
     CMD_BG = '#1a3a5c'
 
-    def __init__(self):
+    def __init__(self, slot=0):
+        self.slot = slot
         self.root = tk.Tk()
         self.root.title('透明キーボード')
         # 起動時のゴーストウィンドウ防止: 非表示状態でUI構築→スタイル変更→表示
@@ -424,13 +436,18 @@ class TransparentKeyboard:
         self.root.after(150, self._poll)
 
     def _position(self):
-        """画面下部中央に配置"""
+        """画面右下に配置（スロットに応じて上にずらす）"""
         self.root.update_idletasks()
         w = self.root.winfo_reqwidth()
         h = self.root.winfo_reqheight()
         sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
-        self.root.geometry(f'+{(sw - w) // 2}+{sh - h - 60}')
+        # 右下基準、スロットごとに上方向にオフセット
+        margin_right = 10
+        margin_bottom = 60
+        x = sw - w - margin_right
+        y = sh - h - margin_bottom - (self.slot * (h + 10))
+        self.root.geometry(f'+{x}+{y}')
 
     def _act(self, action):
         """フォーカスを元のウィンドウに戻してからアクション実行"""
@@ -491,7 +508,7 @@ class TransparentKeyboard:
         x_btn = self._reg(tk.Label(hdr, text='✕', font=('Segoe UI', 6, 'bold'),
                          fg='#ddd', cursor='hand2'), 'header')
         x_btn.pack(side='right', padx=4)
-        x_btn.bind('<Button-1>', lambda e: self.root.destroy())
+        x_btn.bind('<Button-1>', lambda e: self._on_close())
 
         # 最小化ボタン（閉じるボタンから離す、反対色で目立たせる）
         self.min_btn = tk.Label(hdr, text='━', font=('Segoe UI', 5, 'bold'),
@@ -621,9 +638,60 @@ class TransparentKeyboard:
             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
         )
 
+    def _setup_tray(self):
+        """システムトレイアイコンを設定"""
+        try:
+            import pystray
+            from PIL import Image
+        except ImportError:
+            return  # pystray/Pillow未インストール時はトレイなし
+
+        icon_path = getattr(self, '_icon_path', None)
+        if icon_path and os.path.exists(icon_path):
+            image = Image.open(icon_path)
+        else:
+            # フォールバック: 16x16ピンクアイコン
+            image = Image.new('RGB', (16, 16), '#e88aa0')
+
+        def on_show(icon, item):
+            self.root.after(0, self._tray_show)
+
+        def on_quit(icon, item):
+            icon.stop()
+            self.root.after(0, self.root.destroy)
+
+        menu = pystray.Menu(
+            pystray.MenuItem('表示', on_show, default=True),
+            pystray.MenuItem('終了', on_quit),
+        )
+        self._tray_icon = pystray.Icon(
+            'transparent_keyboard',
+            image,
+            '透明キーボード',
+            menu,
+        )
+        # トレイアイコンを別スレッドで起動
+        tray_thread = threading.Thread(target=self._tray_icon.run, daemon=True)
+        tray_thread.start()
+
+    def _tray_show(self):
+        """トレイからの表示復元"""
+        self.root.deiconify()
+        self.root.attributes('-topmost', True)
+
+    def _on_close(self):
+        """閉じるボタン: トレイアイコンも停止して終了"""
+        if hasattr(self, '_tray_icon'):
+            try:
+                self._tray_icon.stop()
+            except Exception:
+                pass
+        self.root.destroy()
+
     def run(self):
+        self._setup_tray()
         self.root.mainloop()
 
 
 if __name__ == '__main__':
-    TransparentKeyboard().run()
+    TransparentKeyboard(slot=_instance_slot).run()
