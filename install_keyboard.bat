@@ -18,22 +18,33 @@ if not exist "%EXE_PATH%" (
     exit /b 1
 )
 
+REM 実行中の透明キーボードを終了
+echo [0/4] 実行中の透明キーボードを終了中...
+taskkill /F /FI "WINDOWTITLE eq 透明キーボード" >nul 2>&1
+timeout /t 1 /nobreak >nul
+echo   OK
+
 REM スタートメニューにショートカット作成
-echo [1/3] スタートメニューにショートカット作成中...
+echo [1/4] スタートメニューにショートカット作成中...
 set "START_MENU=%APPDATA%\Microsoft\Windows\Start Menu\Programs"
 powershell -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut('%START_MENU%\%SHORTCUT_NAME%.lnk'); $sc.TargetPath = '%EXE_PATH%'; $sc.IconLocation = '%ICO_PATH%'; $sc.Description = '透明キーボード オーバーレイ'; $sc.Save()"
 echo   OK
 
 REM デスクトップにショートカット作成
-echo [2/3] デスクトップにショートカット作成中...
+echo [2/4] デスクトップにショートカット作成中...
 set "DESKTOP=%USERPROFILE%\Desktop"
 powershell -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut('%DESKTOP%\%SHORTCUT_NAME%.lnk'); $sc.TargetPath = '%EXE_PATH%'; $sc.IconLocation = '%ICO_PATH%'; $sc.Description = '透明キーボード オーバーレイ'; $sc.Save()"
 echo   OK
 
 REM スタートアップにショートカット作成（PC起動時に自動起動）
-echo [3/3] スタートアップにショートカット作成中...
+echo [3/4] スタートアップにショートカット作成中...
 set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
 powershell -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut('%STARTUP%\%SHORTCUT_NAME%.lnk'); $sc.TargetPath = '%EXE_PATH%'; $sc.IconLocation = '%ICO_PATH%'; $sc.Description = '透明キーボード オーバーレイ'; $sc.Save()"
+echo   OK
+
+REM 新しいEXEを起動
+echo [4/4] 透明キーボードを起動中...
+start "" "%EXE_PATH%"
 echo   OK
 
 echo.
@@ -41,7 +52,7 @@ echo ========================================
 echo   インストール完了!
 echo.
 echo   Googleドライブから直接起動するので
-echo   EXE更新時も自動で反映されます
+echo   EXE更新時もこのbatを再実行するだけ
 echo.
 echo   タスクバーにピン留めするには:
 echo   デスクトップの「透明キーボード」を

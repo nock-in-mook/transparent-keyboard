@@ -239,6 +239,11 @@ def open_apps_folder():
         os.startfile(apps_dir)
 
 
+def toggle_ime():
+    """半角/全角キーを送信してIMEをトグル"""
+    send_key(VK_KANJI)
+
+
 def bring_terminals_to_front():
     """即ランチャーのShowAll機能を呼び出す（再配置＋最前面）"""
     launcher_dir = r'G:\マイドライブ\_Apps2026\terminal_copy'
@@ -258,8 +263,11 @@ class TransparentKeyboard:
         ('green',  '#6bc98a', '#55b070'),
         ('purple', '#a88ad9', '#9070cc'),
         ('orange', '#e8a855', '#cc9040'),
+        ('yellow', '#e8d855', '#ccbc40'),
         ('dark',   '#3a3a5e', '#2a2a44'),
     ]
+    # スロットごとの初期テーマ（0=ピンク, 2=グリーン, 5=イエロー）
+    SLOT_THEMES = [0, 2, 5]
 
     BTN_BG = '#1e2d3d'
     BTN_FG = '#f0f0f0'
@@ -275,9 +283,9 @@ class TransparentKeyboard:
         # アイコン設定（タスクバー表示用）
         self._set_icon()
         self.root.attributes('-topmost', True)
-        self.root.attributes('-alpha', 0.4)
+        self.root.attributes('-alpha', 0.8)
 
-        self.theme_idx = 0  # ピンクから開始
+        self.theme_idx = self.SLOT_THEMES[self.slot] if self.slot < len(self.SLOT_THEMES) else 0
         self.bg_widgets = []  # 背景色を変えるウィジェット一覧
 
         self.last_target = None
@@ -314,10 +322,19 @@ class TransparentKeyboard:
         if hasattr(self, 'theme_btn'):
             next_idx = (self.theme_idx + 1) % len(self.THEMES)
             self.theme_btn.configure(bg=self.THEMES[next_idx][1])
-        # 最小化ボタンの背景を反対色に（6色の対角 = +3）
+        # 最小化ボタンの背景を反対色に（対角）
         if hasattr(self, 'min_btn'):
-            opposite_idx = (self.theme_idx + 3) % len(self.THEMES)
+            opposite_idx = (self.theme_idx + len(self.THEMES) // 2) % len(self.THEMES)
             self.min_btn.configure(bg=self.THEMES[opposite_idx][2])
+        # アクセント行のボタン色をテーマ連動の濃い色に
+        if hasattr(self, '_accent_btns'):
+            accent_bg = self._darken(hdr_bg)
+            accent_active = self._darken(bg, 0.65)
+            for b in self._accent_btns:
+                try:
+                    b.configure(bg=accent_bg, activebackground=accent_active)
+                except tk.TclError:
+                    pass
 
     def _cycle_theme(self, event=None):
         """次の背景色に切り替え"""
@@ -385,10 +402,12 @@ class TransparentKeyboard:
         WM_SETICON = 0x0080
         ICON_BIG = 1
         ICON_SMALL = 0
+        SendMessageW = ctypes.windll.user32.SendMessageW
+        SendMessageW.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p]
         if icon_big:
-            user32.SendMessageW(self.my_hwnd, WM_SETICON, ICON_BIG, icon_big)
+            SendMessageW(self.my_hwnd, WM_SETICON, ICON_BIG, icon_big)
         if icon_small:
-            user32.SendMessageW(self.my_hwnd, WM_SETICON, ICON_SMALL, icon_small)
+            SendMessageW(self.my_hwnd, WM_SETICON, ICON_SMALL, icon_small)
 
     def _on_restore(self, event=None):
         """最小化から復元されたときにtopmostを再適用"""
@@ -442,19 +461,29 @@ class TransparentKeyboard:
     MARGIN_TOP_RATIO = 0.0
     MARGIN_BOTTOM_RATIO = 0.20  # ターミナル下マージン20%（キーボード領域）
     SHADOW_OVERLAP = 14
+    SHADOW_INSET = 7  # ウィンドウ影の片側幅（キーボードには影がないので補正用）
     MAX_TERMINALS = 3
     KB_HEIGHT_RATIO = 0.20  # キーボード高さ = 画面の20%
 
     def _calc_layout(self):
-        """即ランチャーと同じ計算式でレイアウト情報を返す"""
+        """即ランチャーと同じ計算式でレイアウト情報を返す（タスクバー除外）"""
+        # 画面全体サイズ（即ランチャーと同じ基準で幅を計算）
         sw = user32.GetSystemMetrics(0)
-        sh = user32.GetSystemMetrics(1)
+        sh_full = user32.GetSystemMetrics(1)
+        # 作業領域（タスクバーを除いた領域）で高さ方向を計算
+        work_rect = ctypes.wintypes.RECT()
+        SPI_GETWORKAREA = 0x0030
+        ctypes.windll.user32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(work_rect), 0)
+        work_top = work_rect.top
+        work_h = work_rect.bottom - work_rect.top
+        # 幅は画面全体ベース（即ランチャーと一致させる）
         total_w = int(sw * self.SCREEN_USE_RATIO)
         win_w = (total_w + self.SHADOW_OVERLAP * (self.MAX_TERMINALS - 1)) // self.MAX_TERMINALS
-        margin_top = int(sh * self.MARGIN_TOP_RATIO)
-        term_h = sh - margin_top - int(sh * self.MARGIN_BOTTOM_RATIO)
-        kb_h = int(sh * self.KB_HEIGHT_RATIO)
-        return sw, sh, win_w, margin_top, term_h, kb_h
+        # 高さは作業領域ベース
+        margin_top = int(work_h * self.MARGIN_TOP_RATIO) + work_top
+        term_h = work_h - int(work_h * self.MARGIN_TOP_RATIO) - int(work_h * self.MARGIN_BOTTOM_RATIO)
+        kb_h = int(work_h * self.KB_HEIGHT_RATIO) + self.SHADOW_INSET  # 影に食い込む分を加算
+        return sw, work_h, win_w, margin_top, term_h, kb_h, work_top
 
     @staticmethod
     def _find_wt_windows():
@@ -491,18 +520,19 @@ class TransparentKeyboard:
     def _position(self):
         """初期配置（_realign_allで上書きされる前の仮位置）"""
         self.root.update_idletasks()
-        sw, sh, win_w, _, term_h, kb_h = self._calc_layout()
-        x = sw - win_w - (self.slot * (win_w - self.SHADOW_OVERLAP))
-        y = sh - kb_h
+        sw, sh, win_w, _, term_h, kb_h, work_top = self._calc_layout()
+        kb_w = win_w - self.SHADOW_INSET * 2
+        x = sw - kb_w - (self.slot * kb_w)
+        y = work_top + sh - kb_h
         self._target_x = x
         self._target_y = y
-        self._target_w = win_w
+        self._target_w = kb_w
         self._target_h = kb_h
-        self.root.geometry(f'{win_w}x{kb_h}+{x}+{y}')
+        self.root.geometry(f'{kb_w}x{kb_h}+{x}+{y}')
 
     def _realign_all(self):
         """ターミナル+キーボードをセットで整列"""
-        sw, sh, win_w, margin_top, term_h, kb_h = self._calc_layout()
+        sw, sh, win_w, margin_top, term_h, kb_h, work_top = self._calc_layout()
 
         # ターミナルを検出してx座標でソート
         wt_hwnds = self._find_wt_windows()[:self.MAX_TERMINALS]
@@ -524,8 +554,8 @@ class TransparentKeyboard:
         n_wt = len(wt_sorted)
         n_kb = len(kb_sorted)
 
-        # ターミナルを右寄せで再配置
-        x = sw
+        # ターミナルを右寄せで再配置（右の影を画面外に押し出す）
+        x = sw + self.SHADOW_INSET
         wt_positions = []
         for i in range(n_wt - 1, -1, -1):
             x -= win_w
@@ -535,23 +565,21 @@ class TransparentKeyboard:
             user32.MoveWindow(hwnd, x, margin_top, win_w, term_h, True)
             wt_positions.insert(0, x)
 
-        # キーボードを配置
-        kb_y = margin_top + term_h  # ターミナル直下
+        # キーボードを配置（影の内側幅、ただし右端は影を無視して寄せる）
+        kb_w = win_w - self.SHADOW_INSET * 2
+        kb_y = margin_top + term_h - self.SHADOW_INSET  # ターミナルの影に食い込ませる
         for i, (_, hwnd) in enumerate(kb_sorted):
             if i < n_wt:
-                # ターミナルの真下にドッキング
-                kx = wt_positions[i]
+                # ターミナル実体の右端に合わせる
+                kx = wt_positions[i] + self.SHADOW_INSET
             else:
-                # ターミナルが足りない → 右下から左へ密着
                 if n_wt > 0:
-                    # 最後のターミナルの左に詰める
-                    kx = wt_positions[0] - win_w + self.SHADOW_OVERLAP
+                    kx = wt_positions[0] + self.SHADOW_INSET - kb_w
                     extra = i - n_wt
-                    kx -= extra * (win_w - self.SHADOW_OVERLAP)
+                    kx -= extra * kb_w
                 else:
-                    # ターミナルなし → 右端から左へ
-                    kx = sw - win_w - i * (win_w - self.SHADOW_OVERLAP)
-            user32.MoveWindow(hwnd, kx, kb_y, win_w, kb_h, True)
+                    kx = sw - kb_w - i * kb_w
+            user32.MoveWindow(hwnd, kx, kb_y, kb_w, kb_h, True)
 
     def _act(self, action):
         """フォーカスを元のウィンドウに戻してからアクション実行"""
@@ -567,24 +595,24 @@ class TransparentKeyboard:
 
     def _btn(self, parent, text, command, width=None, style='normal'):
         kw = {
-            'font': ('Segoe UI', 8, 'bold'),
+            'font': ('Segoe UI', 10, 'bold'),
             'bg': self.CMD_BG if style == 'cmd' else self.BTN_BG,
             'fg': self.BTN_FG,
             'activebackground': self.BTN_ACTIVE,
             'activeforeground': '#fff',
-            'relief': 'solid',
-            'bd': 1,
-            'padx': 3,
-            'pady': 2,
+            'relief': 'flat',
+            'bd': 0,
+            'padx': 2,
+            'pady': 0,
             'cursor': 'hand2',
             'command': command,
         }
         if style == 'num':
-            kw['font'] = ('Segoe UI', 9, 'bold')
+            kw['font'] = ('Segoe UI', 11, 'bold')
             kw['padx'] = 1
-            kw['pady'] = 1
+            kw['pady'] = 0
         if style == 'icon':
-            kw['font'] = ('Segoe UI Emoji', 9)
+            kw['font'] = ('Segoe UI Emoji', 11)
             kw['pady'] = 0
         b = tk.Button(parent, text=text, **kw)
         if width:
@@ -596,9 +624,37 @@ class TransparentKeyboard:
         self.bg_widgets.append((widget, kind))
         return widget
 
+    @staticmethod
+    def _darken(hex_color, factor=0.4):
+        """hex色を暗くする"""
+        r = int(hex_color[1:3], 16)
+        g = int(hex_color[3:5], 16)
+        b = int(hex_color[5:7], 16)
+        return f'#{int(r*factor):02x}{int(g*factor):02x}{int(b*factor):02x}'
+
+    def _make_row(self, parent, keys, uniform_group=None, accent=False):
+        """独立Frameで1行分をgrid配置（keys: [(text, command, weight), ...]）
+        uniform_group: 指定すると全カラムを同じ幅グループに強制
+        accent: Trueならテーマ連動の濃い色ボタン"""
+        row = self._reg(tk.Frame(parent))
+        btns = []
+        for col, (text, cmd, weight) in enumerate(keys):
+            b = self._btn(row, text, cmd)
+            b.grid(row=0, column=col, padx=1, sticky='nsew')
+            cfg = {'weight': weight}
+            if uniform_group:
+                cfg['uniform'] = f'{uniform_group}_{weight}'
+            row.columnconfigure(col, **cfg)
+            if accent:
+                btns.append(b)
+        row.rowconfigure(0, weight=1)
+        if accent:
+            self._accent_btns = getattr(self, '_accent_btns', []) + btns
+        return row
+
     def _build_ui(self):
         # ヘッダ（ドラッグ用）
-        hdr = self._reg(tk.Frame(self.root, height=14, cursor='fleur'), 'header')
+        hdr = self._reg(tk.Frame(self.root, height=15, cursor='fleur'), 'header')
         hdr.pack(fill='x')
         hdr.pack_propagate(False)
 
@@ -616,7 +672,7 @@ class TransparentKeyboard:
 
         # 最小化ボタン（閉じるボタンから離す、反対色で目立たせる）
         self.min_btn = tk.Label(hdr, text='━', font=('Segoe UI', 5, 'bold'),
-                               fg='#fff', cursor='hand2', relief='solid', bd=1)
+                               fg='#fff', cursor='hand2', relief='flat', bd=0)
         self.min_btn.pack(side='right', padx=(2, 12))
         self.min_btn.bind('<Button-1>', lambda e: self.root.iconify())
 
@@ -625,109 +681,118 @@ class TransparentKeyboard:
             w.bind('<B1-Motion>', self._drag_move)
             w.bind('<Double-Button-1>', lambda e: self.root.iconify())
 
-        # メインエリア: Enter(右) + 左キー群
+        # メインエリア: キー群(左, weight=20) + Enter(右, weight=3 ≒ 1.5倍幅)
         body = self._reg(tk.Frame(self.root))
-        body.pack(fill='both', expand=True, padx=0, pady=0)
-
-        # Enter: 右端に縦いっぱい
-        enter_btn = tk.Button(
-            body, text='Enter\n⏎',
-            font=('Segoe UI', 9, 'bold'),
-            bg='#2a4a6c', fg=self.BTN_FG,
-            activebackground='#3a6a9c', activeforeground='#fff',
-            relief='solid', bd=1,
-            padx=6, cursor='hand2',
-            command=lambda: self._act(lambda: send_key(VK_RETURN)),
-        )
-        enter_btn.pack(side='right', fill='y', padx=(0, 1), pady=1)
+        body.pack(fill='both', expand=True, padx=2, pady=(0, 2))
+        body.columnconfigure(0, weight=20)
+        body.columnconfigure(1, weight=3)
+        body.rowconfigure(0, weight=1)
 
         left = self._reg(tk.Frame(body))
-        left.pack(side='left', fill='both', expand=True)
+        left.grid(row=0, column=0, sticky='nsew')
 
-        NUM_W = 2    # 数字キー幅(小)
-        FUNC_W = 4   # 機能キー幅(大): 📷↑, 半/全, 📁, PrtSc 共通
+        enter_btn = tk.Button(
+            body, text='Enter\n⏎',
+            font=('Segoe UI', 11, 'bold'),
+            bg='#2a4a6c', fg=self.BTN_FG,
+            activebackground='#3a6a9c', activeforeground='#fff',
+            relief='flat', bd=0,
+            cursor='hand2',
+            command=lambda: self._act(lambda: send_key(VK_RETURN)),
+        )
+        enter_btn.grid(row=0, column=1, sticky='nsew', padx=(1, 0))
 
-        # Row 0: ESC ← ↓ ↑ → | ★Apps
-        r_nav = self._reg(tk.Frame(left))
-        r_nav.pack(fill='x', pady=1)
-        self._btn(r_nav, 'ESC', lambda: self._act(lambda: send_key(VK_ESCAPE)),
-                  style='num').pack(side='left', padx=1, fill='both', expand=True)
-        for arrow, vk in [('←', VK_LEFT), ('↓', VK_DOWN), ('↑', VK_UP), ('→', VK_RIGHT)]:
-            b = self._btn(r_nav, arrow, lambda v=vk: self._act(lambda: send_key(v)), style='num')
-            b.pack(side='left', padx=1, fill='both', expand=True)
-        self._btn(r_nav, '★Apps', lambda: open_apps_folder(),
-                  style='num').pack(side='left', padx=1, fill='both', expand=True)
+        # left内をgridで均等配分（5論理行: row0, numgrid=2行分, row3, row4）
+        for r in range(4):
+            left.rowconfigure(r, weight=2 if r == 1 else 1)  # numgridは2行分
+        left.columnconfigure(0, weight=1)
 
-        # Row 1: 1 2 3 4 5 | 📷↑ 半/全
-        r0 = self._reg(tk.Frame(left))
-        r0.pack(fill='x', pady=1)
-        for n in '12345':
-            b = self._btn(r0, n, lambda c=n: self._act(lambda: type_text(c)), style='num')
-            b.configure(width=NUM_W)
-            b.pack(side='left', padx=1, fill='both', expand=False)
-        b = self._btn(r0, '📷↑', lambda: self._act(paste_latest_screenshot), style='num')
-        b.configure(width=FUNC_W)
-        b.pack(side='left', padx=1, fill='both', expand=False)
-        hz_btn = self._btn(r0, '半/全', lambda: self._act(lambda: send_key(VK_KANJI)),
-                           style='num')
-        hz_btn.configure(font=('Meiryo UI', 9, 'bold'), width=FUNC_W)
-        hz_btn.pack(side='left', padx=1, fill='both', expand=True)
+        # Row 0: ESC ← ↓ ↑ → ★Apps (均等)
+        r0 = self._make_row(left, [
+            ('ESC',    lambda: self._act(lambda: send_key(VK_ESCAPE)), 1),
+            ('◀',      lambda: self._act(lambda: send_key(VK_LEFT)), 1),
+            ('▼',      lambda: self._act(lambda: send_key(VK_DOWN)), 1),
+            ('▲',      lambda: self._act(lambda: send_key(VK_UP)), 1),
+            ('▶',      lambda: self._act(lambda: send_key(VK_RIGHT)), 1),
+            ('Apps',   lambda: open_apps_folder(), 1),
+        ])
+        r0.grid(row=0, column=0, sticky='nsew', pady=(0, 1))
+        # 矢印キー(col1-4)を大きめに
+        for c in (1, 2, 3, 4):
+            r0.grid_slaves(row=0, column=c)[0].configure(font=('Segoe UI', 12, 'bold'))
 
-        # Row 1: 6 7 8 9 0 | 📁 PrtSc
-        r1 = self._reg(tk.Frame(left))
-        r1.pack(fill='x', pady=1)
-        for n in '67890':
-            b = self._btn(r1, n, lambda c=n: self._act(lambda: type_text(c)), style='num')
-            b.configure(width=NUM_W)
-            b.pack(side='left', padx=1, fill='both', expand=False)
-        b = self._btn(r1, '📁', lambda: open_screenshot_folder(), style='num')
-        b.configure(width=FUNC_W)
-        b.pack(side='left', padx=1, fill='both', expand=False)
-        b = self._btn(r1, 'PrtSc', lambda: self._act(lambda: send_key(VK_SNAPSHOT)), style='num')
-        b.configure(width=FUNC_W)
-        b.pack(side='left', padx=1, fill='both', expand=True)
-
-        # Row 2: Copy Paste |←←Del | Home End BS（右3つで残りを三等分）
-        r2 = self._reg(tk.Frame(left))
-        r2.pack(fill='x', pady=1)
-        big_keys = [
-            ('Copy', lambda: self._act(lambda: send_combo(VK_CONTROL, VK_INSERT))),
-            ('Paste', lambda: self._act(lambda: send_combo(VK_SHIFT, VK_INSERT))),
-            ('|←←Del', lambda: self._act(lambda: send_combo(VK_CONTROL, VK_U))),
+        # Row 1-2: 数字キー2行を1つのgridで統合（カラム幅を確実に揃える）
+        numgrid = self._reg(tk.Frame(left), 'body')
+        numgrid.grid(row=1, column=0, sticky='nsew', pady=1)
+        numgrid.rowconfigure(0, weight=1)
+        numgrid.rowconfigure(1, weight=1)
+        weights = [2, 2, 2, 2, 2, 3, 3]
+        for col, w in enumerate(weights):
+            numgrid.columnconfigure(col, weight=w)
+        # Row 1: 1 2 3 4 5 📷↑(2行分) 半角
+        row1_nums = [
+            ('1', lambda: self._act(lambda: type_text('1'))),
+            ('2', lambda: self._act(lambda: type_text('2'))),
+            ('3', lambda: self._act(lambda: type_text('3'))),
+            ('4', lambda: self._act(lambda: type_text('4'))),
+            ('5', lambda: self._act(lambda: type_text('5'))),
         ]
-        small_keys = [
-            ('Home', lambda: self._act(lambda: send_key(VK_HOME))),
-            ('End',  lambda: self._act(lambda: send_key(VK_END))),
-            ('BS',   lambda: self._act(lambda: send_key(VK_BACK))),
+        for col, (text, cmd) in enumerate(row1_nums):
+            b = self._btn(numgrid, text, cmd)
+            b.grid(row=0, column=col, padx=1, pady=(0, 1), sticky='nsew')
+            self._accent_btns = getattr(self, '_accent_btns', []) + [b]
+        # 📷↑: 2行にまたがる
+        cam_btn = self._btn(numgrid, '🎞↑', lambda: self._act(paste_latest_screenshot))
+        cam_btn.configure(font=('Segoe UI Emoji', 18), anchor='center')
+        cam_btn.grid(row=0, column=5, rowspan=2, padx=1, sticky='nsew')
+        self._accent_btns = getattr(self, '_accent_btns', []) + [cam_btn]
+        # 半/全トグル
+        hanb = self._btn(numgrid, '半/全', lambda: self._act(toggle_ime))
+        hanb.configure(font=('Meiryo UI', 11, 'bold'))
+        hanb.grid(row=0, column=6, padx=1, pady=(0, 1), sticky='nsew')
+        self._accent_btns = getattr(self, '_accent_btns', []) + [hanb]
+        # Row 2: 6 7 8 9 0 (col5は📷↑が占有) PrtSc
+        row2_nums = [
+            ('6', lambda: self._act(lambda: type_text('6'))),
+            ('7', lambda: self._act(lambda: type_text('7'))),
+            ('8', lambda: self._act(lambda: type_text('8'))),
+            ('9', lambda: self._act(lambda: type_text('9'))),
+            ('0', lambda: self._act(lambda: type_text('0'))),
         ]
-        for label, cmd in big_keys:
-            b = self._btn(r2, label, cmd)
-            b.configure(width=FUNC_W)
-            b.pack(side='left', padx=1, fill='both', expand=False)
-        for label, cmd in small_keys:
-            b = self._btn(r2, label, cmd)
-            b.pack(side='left', padx=1, fill='both', expand=True)
+        for col, (text, cmd) in enumerate(row2_nums):
+            b = self._btn(numgrid, text, cmd)
+            b.grid(row=1, column=col, padx=1, sticky='nsew')
+        # PrtSc（col6、ブラウン固定）
+        prtsc = self._btn(numgrid, 'PrtSc', lambda: self._act(lambda: send_key(VK_SNAPSHOT)))
+        prtsc.configure(bg='#68432e', activebackground='#805540')
+        prtsc.grid(row=1, column=6, padx=1, sticky='nsew')
 
-        # Row 3: F13 Ctrl+A /remote /resume
-        r3 = self._reg(tk.Frame(left))
-        r3.pack(fill='x', pady=1)
+        # Row 3: Copy Paste |←←Del Home End BS (big=3, small=2, アクセント色)
+        r3 = self._make_row(left, [
+            ('Copy',   lambda: self._act(lambda: send_combo(VK_CONTROL, VK_INSERT)), 3),
+            ('Paste',  lambda: self._act(lambda: send_combo(VK_SHIFT, VK_INSERT)), 3),
+            ('|←←Del', lambda: self._act(lambda: send_combo(VK_CONTROL, VK_U)), 3),
+            ('Home',   lambda: self._act(lambda: send_key(VK_HOME)), 2),
+            ('End',    lambda: self._act(lambda: send_key(VK_END)), 2),
+            ('BS',     lambda: self._act(lambda: send_key(VK_BACK)), 2),
+        ], accent=True)
+        r3.grid(row=2, column=0, sticky='nsew', pady=1)
 
+        # Row 4: 🪟🪟 CtrlA /remote /resume (均等)
         def type_cmd(text):
-            """テキストを入力してEnter"""
             def action():
                 type_text(text)
                 time.sleep(0.02)
                 send_key(VK_RETURN)
             self._act(action)
 
-        self._btn(r3, '🪟🪟', lambda: bring_terminals_to_front(),
-                  style='normal').pack(side='left', padx=1, fill='x', expand=True)
-        self._btn(r3, 'CtrlA', lambda: self._act(lambda: send_combo(VK_CONTROL, 0x41)),
-                  style='normal').pack(side='left', padx=1, fill='x', expand=True)
-        self._btn(r3, '/remote', lambda: type_cmd('/remote-control'),
-                  style='normal').pack(side='left', padx=1, fill='x', expand=True)
-        self._btn(r3, '/resume', lambda: type_cmd('/resume'),
-                  style='normal').pack(side='left', padx=1, fill='x', expand=True)
+        r4 = self._make_row(left, [
+            ('🪟🪟',    lambda: bring_terminals_to_front(), 1),
+            ('CtrlA',   lambda: self._act(lambda: send_combo(VK_CONTROL, 0x41)), 1),
+            ('/remote',  lambda: type_cmd('/remote-control'), 1),
+            ('/resume',  lambda: type_cmd('/resume'), 1),
+        ])
+        r4.grid(row=3, column=0, sticky='nsew', pady=(1, 0))
 
     def _drag_start(self, e):
         self.drag_x = e.x_root - self.root.winfo_x()
