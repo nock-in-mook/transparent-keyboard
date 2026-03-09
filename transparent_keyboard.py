@@ -354,13 +354,12 @@ class TransparentKeyboard:
         ex = user32.GetWindowLongW(self.my_hwnd, GWL_EXSTYLE) & 0xFFFFFFFF
         ex = (ex | WS_EX_APPWINDOW) & ~(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)
         user32.SetWindowLongW(self.my_hwnd, GWL_EXSTYLE, ex)
-        # スタイル変更をシステムに反映し、コンテンツサイズにフィットさせる
+        # スタイル変更をシステムに反映（_positionで計算したサイズ・座標を使用）
         self.root.update_idletasks()
-        cw = self.root.winfo_reqwidth()
-        ch = self.root.winfo_reqheight()
-        # _positionで計算した座標を使用（winfo_x/yはフレーム除去で狂うため）
         x = getattr(self, '_target_x', self.root.winfo_x())
         y = getattr(self, '_target_y', self.root.winfo_y())
+        cw = getattr(self, '_target_w', self.root.winfo_reqwidth())
+        ch = getattr(self, '_target_h', self.root.winfo_reqheight())
         user32.SetWindowPos(
             self.my_hwnd, 0, x, y, cw, ch,
             SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOACTIVATE
@@ -438,53 +437,121 @@ class TransparentKeyboard:
             self.last_target = hwnd
         self.root.after(150, self._poll)
 
-    def _position(self):
-        """画面右下に配置（スロットに応じて左へずらす）"""
-        self.root.update_idletasks()
-        w = self.root.winfo_reqwidth()
-        h = self.root.winfo_reqheight()
-        sw = self.root.winfo_screenwidth()
-        sh = self.root.winfo_screenheight()
-        # 右下ぴったり、スロットごとに左方向にオフセット
-        margin_bottom = 48  # タスクバー分
-        x = sw - w - (self.slot * w)
-        y = sh - h - margin_bottom
-        self._target_x = x
-        self._target_y = y
-        self.root.geometry(f'+{x}+{y}')
+    # 即ランチャーと同じ配置定数
+    SCREEN_USE_RATIO = 0.95
+    MARGIN_TOP_RATIO = 0.0
+    MARGIN_BOTTOM_RATIO = 0.20  # ターミナル下マージン20%（キーボード領域）
+    SHADOW_OVERLAP = 14
+    MAX_TERMINALS = 3
+    KB_HEIGHT_RATIO = 0.20  # キーボード高さ = 画面の20%
 
-    def _realign_all(self):
-        """全ての透明キーボードウィンドウを右下から左へ整列"""
+    def _calc_layout(self):
+        """即ランチャーと同じ計算式でレイアウト情報を返す"""
+        sw = user32.GetSystemMetrics(0)
+        sh = user32.GetSystemMetrics(1)
+        total_w = int(sw * self.SCREEN_USE_RATIO)
+        win_w = (total_w + self.SHADOW_OVERLAP * (self.MAX_TERMINALS - 1)) // self.MAX_TERMINALS
+        margin_top = int(sh * self.MARGIN_TOP_RATIO)
+        term_h = sh - margin_top - int(sh * self.MARGIN_BOTTOM_RATIO)
+        kb_h = int(sh * self.KB_HEIGHT_RATIO)
+        return sw, sh, win_w, margin_top, term_h, kb_h
+
+    @staticmethod
+    def _find_wt_windows():
+        """Windows Terminalのウィンドウハンドルを全て取得"""
+        WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.POINTER(ctypes.c_int))
+        hwnds = []
+        cls_buf = ctypes.create_unicode_buffer(256)
+        def cb(hwnd, _):
+            if user32.IsWindowVisible(hwnd):
+                user32.GetClassNameW(hwnd, cls_buf, 256)
+                if 'CASCADIA_HOSTING_WINDOW_CLASS' in cls_buf.value:
+                    hwnds.append(hwnd)
+            return True
+        user32.EnumWindows(WNDENUMPROC(cb), None)
+        return hwnds
+
+    @staticmethod
+    def _find_kb_windows():
+        """透明キーボードのウィンドウハンドルを全て取得"""
         WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.POINTER(ctypes.c_int))
         hwnds = []
         title_buf = ctypes.create_unicode_buffer(256)
-        class_buf = ctypes.create_unicode_buffer(256)
-
-        def enum_cb(hwnd, lParam):
+        cls_buf = ctypes.create_unicode_buffer(256)
+        def cb(hwnd, _):
             if user32.IsWindowVisible(hwnd):
                 user32.GetWindowTextW(hwnd, title_buf, 256)
-                user32.GetClassNameW(hwnd, class_buf, 256)
-                # tkinterウィンドウのみ対象（ターミナル等を巻き込まない）
-                if title_buf.value == '透明キーボード' and class_buf.value == 'TkTopLevel':
+                user32.GetClassNameW(hwnd, cls_buf, 256)
+                if title_buf.value == '透明キーボード' and cls_buf.value == 'TkTopLevel':
                     hwnds.append(hwnd)
             return True
+        user32.EnumWindows(WNDENUMPROC(cb), None)
+        return hwnds
 
-        user32.EnumWindows(WNDENUMPROC(enum_cb), None)
-        if not hwnds:
-            return
-        # 自分のサイズ基準で整列計算
-        w = self.root.winfo_width()
-        h = self.root.winfo_height()
-        sw = self.root.winfo_screenwidth()
-        sh = self.root.winfo_screenheight()
-        margin_bottom = 48
-        for idx, hwnd in enumerate(hwnds):
-            x = sw - w - (idx * w)
-            y = sh - h - margin_bottom
-            user32.SetWindowPos(
-                hwnd, 0, x, y, 0, 0,
-                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
-            )
+    def _position(self):
+        """初期配置（_realign_allで上書きされる前の仮位置）"""
+        self.root.update_idletasks()
+        sw, sh, win_w, _, term_h, kb_h = self._calc_layout()
+        x = sw - win_w - (self.slot * (win_w - self.SHADOW_OVERLAP))
+        y = sh - kb_h
+        self._target_x = x
+        self._target_y = y
+        self._target_w = win_w
+        self._target_h = kb_h
+        self.root.geometry(f'{win_w}x{kb_h}+{x}+{y}')
+
+    def _realign_all(self):
+        """ターミナル+キーボードをセットで整列"""
+        sw, sh, win_w, margin_top, term_h, kb_h = self._calc_layout()
+
+        # ターミナルを検出してx座標でソート
+        wt_hwnds = self._find_wt_windows()[:self.MAX_TERMINALS]
+        rect = ctypes.wintypes.RECT()
+        wt_sorted = []
+        for hwnd in wt_hwnds:
+            user32.GetWindowRect(hwnd, ctypes.byref(rect))
+            wt_sorted.append((rect.left, hwnd))
+        wt_sorted.sort(key=lambda r: r[0])
+
+        # キーボードを検出してx座標でソート
+        kb_hwnds = self._find_kb_windows()
+        kb_sorted = []
+        for hwnd in kb_hwnds:
+            user32.GetWindowRect(hwnd, ctypes.byref(rect))
+            kb_sorted.append((rect.left, hwnd))
+        kb_sorted.sort(key=lambda r: r[0])
+
+        n_wt = len(wt_sorted)
+        n_kb = len(kb_sorted)
+
+        # ターミナルを右寄せで再配置
+        x = sw
+        wt_positions = []
+        for i in range(n_wt - 1, -1, -1):
+            x -= win_w
+            if i < n_wt - 1:
+                x += self.SHADOW_OVERLAP
+            _, hwnd = wt_sorted[i]
+            user32.MoveWindow(hwnd, x, margin_top, win_w, term_h, True)
+            wt_positions.insert(0, x)
+
+        # キーボードを配置
+        kb_y = margin_top + term_h  # ターミナル直下
+        for i, (_, hwnd) in enumerate(kb_sorted):
+            if i < n_wt:
+                # ターミナルの真下にドッキング
+                kx = wt_positions[i]
+            else:
+                # ターミナルが足りない → 右下から左へ密着
+                if n_wt > 0:
+                    # 最後のターミナルの左に詰める
+                    kx = wt_positions[0] - win_w + self.SHADOW_OVERLAP
+                    extra = i - n_wt
+                    kx -= extra * (win_w - self.SHADOW_OVERLAP)
+                else:
+                    # ターミナルなし → 右端から左へ
+                    kx = sw - win_w - i * (win_w - self.SHADOW_OVERLAP)
+            user32.MoveWindow(hwnd, kx, kb_y, win_w, kb_h, True)
 
     def _act(self, action):
         """フォーカスを元のウィンドウに戻してからアクション実行"""
@@ -693,12 +760,16 @@ class TransparentKeyboard:
         def on_show(icon, item):
             self.root.after(0, self._tray_show)
 
+        def on_align(icon, item):
+            self.root.after(0, self._realign_all)
+
         def on_quit(icon, item):
             icon.stop()
             self.root.after(0, self.root.destroy)
 
         menu = pystray.Menu(
             pystray.MenuItem('表示', on_show, default=True),
+            pystray.MenuItem('整列', on_align),
             pystray.MenuItem('終了', on_quit),
         )
         self._tray_icon = pystray.Icon(
