@@ -787,7 +787,7 @@ class TransparentKeyboard:
             self._act(action)
 
         r4 = self._make_row(left, [
-            ('🪟🪟',    lambda: bring_terminals_to_front(), 1),
+            ('🪟🪟',    lambda: self._realign_all(), 1),
             ('CtrlA',   lambda: self._act(lambda: send_combo(VK_CONTROL, 0x41)), 1),
             ('/remote',  lambda: type_cmd('/remote-control'), 1),
             ('/resume',  lambda: type_cmd('/resume'), 1),
