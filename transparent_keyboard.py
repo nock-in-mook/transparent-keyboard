@@ -356,8 +356,9 @@ class TransparentKeyboard:
         self.root.update_idletasks()
         cw = self.root.winfo_reqwidth()
         ch = self.root.winfo_reqheight()
-        x = self.root.winfo_x()
-        y = self.root.winfo_y()
+        # _positionで計算した座標を使用（winfo_x/yはフレーム除去で狂うため）
+        x = getattr(self, '_target_x', self.root.winfo_x())
+        y = getattr(self, '_target_y', self.root.winfo_y())
         user32.SetWindowPos(
             self.my_hwnd, 0, x, y, cw, ch,
             SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOACTIVATE
@@ -436,17 +437,18 @@ class TransparentKeyboard:
         self.root.after(150, self._poll)
 
     def _position(self):
-        """画面右下に配置（スロットに応じて上にずらす）"""
+        """画面右下に配置（スロットに応じて左へずらす）"""
         self.root.update_idletasks()
         w = self.root.winfo_reqwidth()
         h = self.root.winfo_reqheight()
         sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
-        # 右下基準、スロットごとに上方向にオフセット
-        margin_right = 10
-        margin_bottom = 60
-        x = sw - w - margin_right
-        y = sh - h - margin_bottom - (self.slot * (h + 10))
+        # 右下ぴったり、スロットごとに左方向にオフセット
+        margin_bottom = 48  # タスクバー分
+        x = sw - w - (self.slot * w)
+        y = sh - h - margin_bottom
+        self._target_x = x
+        self._target_y = y
         self.root.geometry(f'+{x}+{y}')
 
     def _act(self, action):
