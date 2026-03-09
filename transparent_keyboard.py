@@ -291,6 +291,8 @@ class TransparentKeyboard:
         self._setup_frameless()
         # フレームレス化完了後に表示
         self.root.deiconify()
+        # 既存インスタンスも含めて全員整列
+        self.root.after(200, self._realign_all)
         # 復元時にtopmostを再適用
         self.root.bind('<Map>', self._on_restore)
         # タスクバークリック最小化: マウス位置で判定（起動直後は無効）
@@ -450,6 +452,36 @@ class TransparentKeyboard:
         self._target_x = x
         self._target_y = y
         self.root.geometry(f'+{x}+{y}')
+
+    def _realign_all(self):
+        """全ての透明キーボードウィンドウを右下から左へ整列"""
+        WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.POINTER(ctypes.c_int))
+        hwnds = []
+        title_buf = ctypes.create_unicode_buffer(256)
+
+        def enum_cb(hwnd, lParam):
+            if user32.IsWindowVisible(hwnd):
+                user32.GetWindowTextW(hwnd, title_buf, 256)
+                if title_buf.value == '透明キーボード':
+                    hwnds.append(hwnd)
+            return True
+
+        user32.EnumWindows(WNDENUMPROC(enum_cb), None)
+        if not hwnds:
+            return
+        # 自分のサイズ基準で整列計算
+        w = self.root.winfo_width()
+        h = self.root.winfo_height()
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        margin_bottom = 48
+        for idx, hwnd in enumerate(hwnds):
+            x = sw - w - (idx * w)
+            y = sh - h - margin_bottom
+            user32.SetWindowPos(
+                hwnd, 0, x, y, 0, 0,
+                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
+            )
 
     def _act(self, action):
         """フォーカスを元のウィンドウに戻してからアクション実行"""
