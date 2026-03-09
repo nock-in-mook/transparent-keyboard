@@ -20,8 +20,8 @@ if not exist "%EXE_PATH%" (
 
 REM 実行中の透明キーボードを終了
 echo [0/4] 実行中の透明キーボードを終了中...
-taskkill /F /FI "WINDOWTITLE eq 透明キーボード" >nul 2>&1
-timeout /t 1 /nobreak >nul
+taskkill /F /IM 透明キーボード.exe >nul 2>&1
+timeout /t 2 /nobreak >nul
 echo   OK
 
 REM スタートメニューにショートカット作成
