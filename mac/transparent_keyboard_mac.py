@@ -504,17 +504,23 @@ class TransparentKeyboardMac:
     WIDTH = 312
     HEIGHT = 160   # header(18) + 5 rows(28*5) + padding
 
-    def __init__(self):
+    def __init__(self, init_x=None, init_y=None):
         self.theme_idx = 0
         self.app = NSApplication.sharedApplication()
         # Dockに表示（最小化から復帰可能）
         self.app.setActivationPolicy_(NSApplicationActivationPolicyRegular)
 
-        # 画面下部中央に配置
+        # 位置決定: 引数指定があればそこ、なければ画面下部中央
         screen = NSScreen.mainScreen()
         sf = screen.visibleFrame()
-        x = sf.origin.x + (sf.size.width - self.WIDTH) / 2
-        y = sf.origin.y + 30
+        if init_x is not None and init_y is not None:
+            x = init_x
+            # init_yはターミナル下端（macOS座標）= キーボードの上端
+            # NSMakeRectのyはウィンドウ下端なので、高さ分引く
+            y = init_y - self.HEIGHT
+        else:
+            x = sf.origin.x + (sf.size.width - self.WIDTH) / 2
+            y = sf.origin.y + 30
 
         rect = NSMakeRect(x, y, self.WIDTH, self.HEIGHT)
 
@@ -602,4 +608,14 @@ if __name__ == '__main__':
             f.close()  # このスロットは使用中
     if _lock_file is None:
         sys.exit(0)  # 全スロット使用中 → 起動しない
-    TransparentKeyboardMac().run()
+
+    # --x, --y で初期位置を指定可能（即ランチャーから渡される）
+    _init_x = None
+    _init_y = None
+    args = sys.argv[1:]
+    for j in range(len(args) - 1):
+        if args[j] == '--x':
+            _init_x = float(args[j + 1])
+        elif args[j] == '--y':
+            _init_y = float(args[j + 1])
+    TransparentKeyboardMac(init_x=_init_x, init_y=_init_y).run()
