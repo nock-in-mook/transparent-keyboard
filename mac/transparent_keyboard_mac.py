@@ -586,12 +586,20 @@ class TransparentKeyboardMac:
         self.app.run()
 
 
+MAX_INSTANCES = 3
+
 if __name__ == '__main__':
-    # 多重起動防止（flockで排他ロック）
-    _lock_path = os.path.join(tempfile.gettempdir(), 'transparent_keyboard_mac.lock')
-    _lock_file = open(_lock_path, 'w')
-    try:
-        fcntl.flock(_lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except IOError:
-        sys.exit(0)
+    # 起動上限制御（ロックファイルを3つ用意、空きスロットがあれば起動）
+    _lock_file = None
+    for i in range(MAX_INSTANCES):
+        path = os.path.join(tempfile.gettempdir(), f'transparent_keyboard_mac_{i}.lock')
+        f = open(path, 'w')
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            _lock_file = f  # ロック取得成功 → このスロットを使う
+            break
+        except IOError:
+            f.close()  # このスロットは使用中
+    if _lock_file is None:
+        sys.exit(0)  # 全スロット使用中 → 起動しない
     TransparentKeyboardMac().run()
