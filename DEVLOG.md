@@ -7,6 +7,12 @@
 - テーマ切り替え (6色) 実装
 - PyInstaller でEXE化、install_keyboard.bat でショートカット作成
 
+## 2026-03-12 - IME半角固定バグ修正 + topmost廃止
+- 起動時にフォーカスを奪いIMEが壊れる問題を修正（前面ウィンドウを記録→復元）
+- 整列時（_realign_all）にもフォーカス復元を追加
+- 常時topmost維持を廃止、起動・整列時に一瞬だけtopmost→即解除に変更
+- _on_restore、_tray_showからもtopmost削除
+
 ## 2026-03-02 - プロジェクト独立化
 - Kanji_Stroke プロジェクトから分離して独立リポジトリ化
 - CLAUDE.md, HANDOFF.md, ROADMAP.md, DEVLOG.md 作成

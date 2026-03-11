@@ -5,22 +5,16 @@
 - Mac版 v1.2: 即ランチャー連携・Gドライブ対応済み
 - 全PC (Googleドライブ同期) で使える状態
 
-## 今回の変更（2026-03-09）セッション012
-### 機能修正
-- 🪟🪟ボタンを`bring_terminals_to_front()`→`_realign_all()`に変更（トレイの「整列」と同じ機能に統一）
+## 今回の変更（2026-03-12）即ランチャーセッションから修正
+### IME半角固定バグ修正
+- 透明キーボード起動時にフォーカスを奪い、IMEが半角英数に固定される問題を修正
+- `deiconify`前に前面ウィンドウを記録し、表示後に即`SetForegroundWindow`で復元
+- `_realign_all`整列後にも同様にフォーカスを復元
 
-### 一発更新bat命名統一（3プロジェクト）
-- `install_keyboard.bat` → `一発更新_透明キーボード.bat`
-- `install.bat` → `一発更新_即シェア君.bat`（Data_Share/client）
-- `launcher.bat` → `一発更新_即ランチャー.bat`（terminal_copy）
-
-### taskkill修正
-- `/FI "WINDOWTITLE eq ..."` → `/IM 透明キーボード.exe`（確実にマッチ）
-- Git Bashでは `/IM` `/FI` がパスに変換されるため、Python subprocess経由で実行
-
-### CLAUDE.md更新
-- 「ビルドして」一言で全自動デプロイルールを追加
-- グローバルCLAUDE.mdに `一発更新_○○.bat` 命名規則を追記
+### 最前面維持をやめる
+- 常時`-topmost=True`を廃止
+- 起動時・整列時（Show All等）に一瞬だけtopmost → 即解除に変更
+- `_on_restore`（最小化復元時）、`_tray_show`（トレイ復元時）からもtopmost削除
 
 ## 次のアクション
 1. **即ランチャー**: ドロップシャドウ補正の実装（ROADMAP.mdにメモ済み）
