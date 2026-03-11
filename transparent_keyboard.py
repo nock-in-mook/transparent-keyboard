@@ -282,7 +282,6 @@ class TransparentKeyboard:
         self.root.withdraw()
         # アイコン設定（タスクバー表示用）
         self._set_icon()
-        self.root.attributes('-topmost', True)
         self.root.attributes('-alpha', 0.8)
 
         self.theme_idx = self.SLOT_THEMES[self.slot] if self.slot < len(self.SLOT_THEMES) else 0
@@ -299,15 +298,16 @@ class TransparentKeyboard:
         self._setup_frameless()
         # フレームレス化完了後に表示（フォーカスを奪わない）
         prev_fg = user32.GetForegroundWindow()
+        # 一瞬だけtopmost → 他ウィンドウの上に出す → すぐ解除
+        self.root.attributes('-topmost', True)
         self.root.deiconify()
         self.root.update_idletasks()
+        self.root.attributes('-topmost', False)
         # 元のウィンドウにフォーカスを即座に返す（IME状態を壊さない）
         if prev_fg:
             user32.SetForegroundWindow(prev_fg)
         # 既存インスタンスも含めて全員整列
         self.root.after(200, self._realign_all)
-        # 復元時にtopmostを再適用
-        self.root.bind('<Map>', self._on_restore)
         # タスクバークリック最小化: マウス位置で判定（起動直後は無効）
         self._taskbar_guard_ready = False
         self._taskbar_bound = False
@@ -415,10 +415,9 @@ class TransparentKeyboard:
             SendMessageW(self.my_hwnd, WM_SETICON, ICON_SMALL, icon_small)
 
     def _on_restore(self, event=None):
-        """最小化から復元されたときにtopmostを再適用"""
+        """最小化から復元されたとき"""
         # 復元直後のFocusInで再最小化されないようガードを一時無効化
         self._taskbar_guard_ready = False
-        self.root.attributes('-topmost', True)
         # 復元後、フォーカスを元のウィンドウに返す
         if self.last_target:
             self.root.after(50, lambda: user32.SetForegroundWindow(self.last_target))
@@ -860,7 +859,6 @@ class TransparentKeyboard:
     def _tray_show(self):
         """トレイからの表示復元"""
         self.root.deiconify()
-        self.root.attributes('-topmost', True)
 
     def _on_close(self):
         """閉じるボタン: トレイアイコンも停止して終了"""
