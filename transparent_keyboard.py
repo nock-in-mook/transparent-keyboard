@@ -297,8 +297,13 @@ class TransparentKeyboard:
         self._apply_theme()
         self._position()
         self._setup_frameless()
-        # フレームレス化完了後に表示
+        # フレームレス化完了後に表示（フォーカスを奪わない）
+        prev_fg = user32.GetForegroundWindow()
         self.root.deiconify()
+        self.root.update_idletasks()
+        # 元のウィンドウにフォーカスを即座に返す（IME状態を壊さない）
+        if prev_fg:
+            user32.SetForegroundWindow(prev_fg)
         # 既存インスタンスも含めて全員整列
         self.root.after(200, self._realign_all)
         # 復元時にtopmostを再適用
@@ -531,7 +536,8 @@ class TransparentKeyboard:
         self.root.geometry(f'{kb_w}x{kb_h}+{x}+{y}')
 
     def _realign_all(self):
-        """ターミナル+キーボードをセットで整列"""
+        """ターミナル+キーボードをセットで整列（フォーカスを奪わない）"""
+        prev_fg = user32.GetForegroundWindow()
         sw, sh, win_w, margin_top, term_h, kb_h, work_top = self._calc_layout()
 
         # ターミナルを検出してx座標でソート
@@ -580,6 +586,10 @@ class TransparentKeyboard:
                 else:
                     kx = sw - kb_w - i * kb_w
             user32.MoveWindow(hwnd, kx, kb_y, kb_w, kb_h, True)
+
+        # 整列後、元のウィンドウにフォーカスを返す
+        if prev_fg and prev_fg != self.my_hwnd:
+            user32.SetForegroundWindow(prev_fg)
 
     def _act(self, action):
         """フォーカスを元のウィンドウに戻してからアクション実行"""
