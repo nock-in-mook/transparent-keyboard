@@ -586,7 +586,11 @@ class TransparentKeyboard:
                     kx = sw - kb_w - i * kb_w
             user32.MoveWindow(hwnd, kx, kb_y, kb_w, kb_h, True)
 
-        # 整列後、元のウィンドウにフォーカスを返す
+        # 整列後、一瞬だけ最前面に出して即解除
+        self.root.attributes('-topmost', True)
+        self.root.update_idletasks()
+        self.root.attributes('-topmost', False)
+        # 元のウィンドウにフォーカスを返す
         if prev_fg and prev_fg != self.my_hwnd:
             user32.SetForegroundWindow(prev_fg)
 
