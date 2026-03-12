@@ -40,9 +40,11 @@ from AppKit import (
     NSCenterTextAlignment,
     NSStatusBar,
     NSVariableStatusItemLength,
+    NSSquareStatusItemLength,
     NSMenu, NSMenuItem,
     NSEvent,
     NSPasteboard,
+    NSImage,
 )
 from Quartz import (
     CGEventCreateKeyboardEvent,
@@ -555,9 +557,32 @@ class TransparentKeyboardMac:
     def _setup_menu_bar(self):
         """メニューバーに常駐アイコン表示"""
         self.status_item = NSStatusBar.systemStatusBar().statusItemWithLength_(
-            NSVariableStatusItemLength
+            NSSquareStatusItemLength
         )
-        self.status_item.setTitle_('⌨')
+        # キーボードアイコンをNSImageで描画
+        icon = NSImage.alloc().initWithSize_((22, 22))
+        icon.lockFocus()
+        # キーボード本体（角丸四角・枠線のみ）
+        NSColor.colorWithCalibratedWhite_alpha_(0.2, 1.0).setStroke()
+        body_path = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+            NSMakeRect(1, 4, 20, 13), 2.5, 2.5
+        )
+        body_path.setLineWidth_(1.5)
+        body_path.stroke()
+        # 上段キー: 5個
+        NSColor.colorWithCalibratedWhite_alpha_(0.2, 1.0).setFill()
+        for col in range(5):
+            NSBezierPath.fillRect_(NSMakeRect(3 + col * 3.5, 12, 2.5, 2.5))
+        # 中段キー: 4個（少しずらす）
+        for col in range(4):
+            NSBezierPath.fillRect_(NSMakeRect(4.5 + col * 3.5, 8.5, 2.5, 2.5))
+        # 下段: スペースバー
+        NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+            NSMakeRect(5, 5.5, 12, 2), 1, 1
+        ).fill()
+        icon.unlockFocus()
+        icon.setTemplate_(True)
+        self.status_item.button().setImage_(icon)
 
         menu = NSMenu.alloc().init()
 
@@ -570,14 +595,6 @@ class TransparentKeyboardMac:
         )
         self._toggle_item.setTarget_(self._menu_delegate)
         menu.addItem_(self._toggle_item)
-
-        menu.addItem_(NSMenuItem.separatorItem())
-
-        quit_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            'Quit', 'quitApp:', ''
-        )
-        quit_item.setTarget_(self._menu_delegate)
-        menu.addItem_(quit_item)
         self.status_item.setMenu_(menu)
 
     def cycle_theme(self):
