@@ -2,22 +2,22 @@
 
 ## 現在の状況
 - Windows版 v3.2: 復元バグ修正、右端配置、自動複数起動
-- Mac版 v1.2: 即ランチャー連携・Gドライブ対応済み
+- Mac版 v1.4: メニューバー常駐方式、ローカルインストール、LaunchAgent自動起動
 - 全PC (Googleドライブ同期) で使える状態
 
 ## 今回の変更（2026-03-12）
-### タスクバーから復元できないバグ修正
-- `_on_restore` が `<Map>` イベントにバインドされておらず、復元時のタスクバーガード無効化が機能していなかった
-- `<Map>` イベントにバインドし、復元時に一時的にガードを無効化して再最小化ループを防止
-- `_tray_show` にもガード無効化＋topmost処理を追加
+### Mac版: メニューバー常駐方式に変更
+- Dockに表示しない（`NSApplicationActivationPolicyAccessory`）
+- Mac起動時はメニューバーに⌨アイコンだけ常駐（キーボード非表示）
+- メニューから Show/Hide をトグルで切り替え
+- Quitメニュー削除（誤操作防止）
+- アイコンをキーボード型NSImage描画に変更（Template対応でダークモードOK）
+- `--hidden` オプションでLaunchAgentから非表示起動
 
-### キーボード配置を右端から割り当て
-- `_realign_all` でキーボードを右端ターミナルから順に割り当てるよう変更
-- 以前は左端から割り当てていたため、1台だけ起動すると真ん中に配置されていた
-
-### ターミナル数に合わせて自動複数起動
-- スロット0（最初の起動）でWindows Terminalの数を検出し、不足分を自動起動
-- 1つEXEを起動するだけでターミナル数分のキーボードが揃う
+### Mac版: ローカルインストール方式
+- Sandbox問題でGoogleドライブ上のスクリプトをLaunchAgentから直接実行不可
+- `~/.local/bin/` にコピーして実行する方式
+- `run.sh --install` で再インストール可能
 
 ## 次のアクション
 1. **即ランチャー**: ドロップシャドウ補正の実装（ROADMAP.mdにメモ済み）
@@ -29,7 +29,7 @@
 - `透明キーボード.exe` — ビルド済みEXE（gitignore対象、Googleドライブ同期で配布）
 - `一発更新_透明キーボード.bat` — 他PC用一発更新スクリプト
 - `mac/transparent_keyboard_mac.py` — Mac版メインソース
-- `mac/run.sh` — Mac版起動スクリプト
+- `mac/run.sh` — Mac版起動・インストールスクリプト（--installでローカルインストール）
 - `mac/README.md` — Mac版セットアップ手順
 
 ## 技術メモ
@@ -49,5 +49,7 @@
 - キー送信: CGEvent (Quartz)
 - コピペ: Cmd+C / Cmd+V
 - Home/End: Ctrl+A / Ctrl+E
-- 自動起動: LaunchAgent
+- 自動起動: LaunchAgent → `~/.local/bin/` のローカルコピーを `--hidden` で実行
+- メニューバー: NSStatusBar + NSImage描画（キーボード型アイコン、Template対応）
+- Sandbox問題: Googleドライブ上のファイルはLaunchAgentから直接アクセス不可
 - アクセシビリティ権限が必須
