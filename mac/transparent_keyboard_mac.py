@@ -180,6 +180,7 @@ THEMES = [
     ('green',  (0.42, 0.79, 0.54), (0.33, 0.69, 0.44)),
     ('purple', (0.66, 0.54, 0.85), (0.56, 0.44, 0.80)),
     ('orange', (0.91, 0.66, 0.33), (0.80, 0.56, 0.25)),
+    ('yellow', (0.91, 0.85, 0.33), (0.80, 0.74, 0.25)),
     ('dark',   (0.23, 0.23, 0.37), (0.17, 0.17, 0.27)),
 ]
 
@@ -192,6 +193,22 @@ ENTER_BG = (0.16, 0.29, 0.42)
 
 def rgb(r, g, b, a=1.0):
     return NSColor.colorWithCalibratedRed_green_blue_alpha_(r, g, b, a)
+
+
+# =============================================
+# タイマーコールバック用ヘルパー
+# =============================================
+class _Invoker(NSObject):
+    def initWithBlock_(self, block):
+        self = objc.super(_Invoker, self).init()
+        if self is None:
+            return None
+        self._block = block
+        return self
+
+    def invoke_(self, timer):
+        if self._block:
+            self._block()
 
 
 # =============================================
@@ -225,12 +242,13 @@ class KeyboardView(NSView):
 
     @objc.python_method
     def _build_layout(self):
-        """ボタン配置（コンパクト版）"""
+        """ボタン配置（動的サイズ対応）"""
         W = self.frame().size.width
+        H = self.frame().size.height
         HDR_H = 18
-        BTN_H = 28
+        BTN_H = int((H - HDR_H) / 5)
         PAD = 1
-        ENTER_W = 36
+        ENTER_W = max(36, int(W * 0.115))
         body_w = W - ENTER_W - PAD
 
         self._buttons = []
@@ -340,7 +358,7 @@ class KeyboardView(NSView):
 
         # --- Row 4: Term ⌘A /remote /resume ---
         cmd_keys = [
-            ('Term',     lambda: bring_terminals_to_front(),           0.14),
+            ('🪟🪟',     lambda: bring_terminals_to_front(),           0.14),
             ('⌘A',       lambda: send_key(KC['a'], MOD_CMD),          0.14),
             ('/remote',  lambda: type_text_enter('/remote-control'),   0.38),
             ('/resume',  lambda: type_text_enter('/resume'),           0.34),
@@ -405,8 +423,8 @@ class KeyboardView(NSView):
             if style in ('theme', 'close', 'minimize'):
                 font_size = 9
 
-            # Termボタンは白文字で目立たせる
-            fg_color = rgb(1.0, 1.0, 1.0) if label == 'Term' else rgb(*BTN_FG)
+            # 🪟🪟ボタンは白文字で目立たせる
+            fg_color = rgb(1.0, 1.0, 1.0) if label == '🪟🪟' else rgb(*BTN_FG)
 
             attrs = {
                 NSForegroundColorAttributeName: fg_color,
@@ -479,11 +497,15 @@ class KeyboardView(NSView):
 # メインクラス
 # =============================================
 class TransparentKeyboardMac:
-    WIDTH = 312
-    HEIGHT = 160   # header(18) + 5 rows(28*5) + padding
+    DEFAULT_WIDTH = 312
+    DEFAULT_HEIGHT = 160
+    # スロットごとの初期テーマ（pink, green, yellow, blue）
+    SLOT_THEMES = [0, 2, 5, 1]
 
-    def __init__(self, init_x=None, init_y=None):
-        self.theme_idx = 0
+    def __init__(self, init_x=None, init_y=None, width=None, height=None, slot=0):
+        self.width = width or self.DEFAULT_WIDTH
+        self.height = height or self.DEFAULT_HEIGHT
+        self.theme_idx = self.SLOT_THEMES[slot] if slot < len(self.SLOT_THEMES) else 0
         self.app = NSApplication.sharedApplication()
         # Dockに表示しない
         self.app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
@@ -493,12 +515,12 @@ class TransparentKeyboardMac:
         sf = screen.visibleFrame()
         if init_x is not None and init_y is not None:
             x = init_x
-            y = init_y - self.HEIGHT
+            y = init_y - self.height
         else:
-            x = sf.origin.x + (sf.size.width - self.WIDTH) / 2
+            x = sf.origin.x + (sf.size.width - self.width) / 2
             y = sf.origin.y + 30
 
-        rect = NSMakeRect(x, y, self.WIDTH, self.HEIGHT)
+        rect = NSMakeRect(x, y, self.width, self.height)
 
         style = (
             NSWindowStyleMaskBorderless
@@ -511,16 +533,24 @@ class TransparentKeyboardMac:
         self.panel.setFloatingPanel_(True)
         self.panel.setHidesOnDeactivate_(False)
         self.panel.setLevel_(NSFloatingWindowLevel)
-        self.panel.setAlphaValue_(0.4)
+        self.panel.setAlphaValue_(0.8)
         self.panel.setHasShadow_(True)
 
         # キーボードビュー
-        content_rect = NSMakeRect(0, 0, self.WIDTH, self.HEIGHT)
+        content_rect = NSMakeRect(0, 0, self.width, self.height)
         self.view = KeyboardView.alloc().initWithFrame_(content_rect)
         self.view.setup(self)
         self.panel.setContentView_(self.view)
 
         self.panel.orderFront_(None)
+
+        # 2秒後にフローティングレベルを解除（最前面は起動時だけ）
+        self._level_invoker = _Invoker.alloc().initWithBlock_(
+            lambda: self.panel.setLevel_(0)  # NSNormalWindowLevel
+        )
+        NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+            2.0, self._level_invoker, 'invoke:', None, False
+        )
 
     def cycle_theme(self):
         self.theme_idx = (self.theme_idx + 1) % len(THEMES)
@@ -537,7 +567,7 @@ class TransparentKeyboardMac:
         self.app.run()
 
 
-MAX_INSTANCES = 3
+MAX_INSTANCES = 4  # 即ランチャーMac版のMAX_TERMINALSと同じ
 
 if __name__ == '__main__':
     # 起動上限制御（ロックファイルを3つ用意、空きスロットがあれば起動）
@@ -557,10 +587,22 @@ if __name__ == '__main__':
     # コマンドライン引数
     _init_x = None
     _init_y = None
+    _width = None
+    _height = None
+    _slot = 0
     args = sys.argv[1:]
     for j in range(len(args) - 1):
         if args[j] == '--x':
             _init_x = float(args[j + 1])
         elif args[j] == '--y':
             _init_y = float(args[j + 1])
-    TransparentKeyboardMac(init_x=_init_x, init_y=_init_y).run()
+        elif args[j] == '--width':
+            _width = int(float(args[j + 1]))
+        elif args[j] == '--height':
+            _height = int(float(args[j + 1]))
+        elif args[j] == '--slot':
+            _slot = int(args[j + 1])
+    TransparentKeyboardMac(
+        init_x=_init_x, init_y=_init_y,
+        width=_width, height=_height, slot=_slot
+    ).run()
