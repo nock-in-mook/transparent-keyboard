@@ -30,7 +30,6 @@ from AppKit import (
     NSWindowStyleMaskNonactivatingPanel,
     NSWindowStyleMaskUtilityWindow,
     NSFloatingWindowLevel,
-    NSApplicationActivationPolicyRegular,
     NSApplicationActivationPolicyAccessory,
     NSAttributedString,
     NSForegroundColorAttributeName,
@@ -38,13 +37,8 @@ from AppKit import (
     NSMutableParagraphStyle,
     NSParagraphStyleAttributeName,
     NSCenterTextAlignment,
-    NSStatusBar,
-    NSVariableStatusItemLength,
-    NSSquareStatusItemLength,
-    NSMenu, NSMenuItem,
     NSEvent,
     NSPasteboard,
-    NSImage,
 )
 from Quartz import (
     CGEventCreateKeyboardEvent,
@@ -482,36 +476,16 @@ class KeyboardView(NSView):
 
 
 # =============================================
-# メニューバー用デリゲート（ObjCランタイムに認識される）
-# =============================================
-class MenuDelegate(NSObject):
-    def init(self):
-        self = objc.super(MenuDelegate, self).init()
-        self._keyboard = None
-        return self
-
-    @objc.IBAction
-    def toggleKeyboard_(self, sender):
-        if self._keyboard:
-            self._keyboard.toggle()
-
-    @objc.IBAction
-    def quitApp_(self, sender):
-        NSApplication.sharedApplication().terminate_(None)
-
-
-# =============================================
 # メインクラス
 # =============================================
 class TransparentKeyboardMac:
     WIDTH = 312
     HEIGHT = 160   # header(18) + 5 rows(28*5) + padding
 
-    def __init__(self, init_x=None, init_y=None, hidden=False):
+    def __init__(self, init_x=None, init_y=None):
         self.theme_idx = 0
-        self._visible = False
         self.app = NSApplication.sharedApplication()
-        # Dockに表示しない（メニューバー常駐のみ）
+        # Dockに表示しない
         self.app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
 
         # 位置決定: 引数指定があればそこ、なければ画面下部中央
@@ -546,77 +520,15 @@ class TransparentKeyboardMac:
         self.view.setup(self)
         self.panel.setContentView_(self.view)
 
-        # メニューバーアイコン
-        self._setup_menu_bar()
-
-        # 初期表示（--hidden でなければ表示）
-        if not hidden:
-            self.panel.orderFront_(None)
-            self._visible = True
-
-    def _setup_menu_bar(self):
-        """メニューバーに常駐アイコン表示"""
-        self.status_item = NSStatusBar.systemStatusBar().statusItemWithLength_(
-            NSSquareStatusItemLength
-        )
-        # キーボードアイコンをNSImageで描画
-        icon = NSImage.alloc().initWithSize_((22, 22))
-        icon.lockFocus()
-        # キーボード本体（角丸四角・枠線のみ）
-        NSColor.colorWithCalibratedWhite_alpha_(0.2, 1.0).setStroke()
-        body_path = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
-            NSMakeRect(1, 4, 20, 13), 2.5, 2.5
-        )
-        body_path.setLineWidth_(1.5)
-        body_path.stroke()
-        # 上段キー: 5個
-        NSColor.colorWithCalibratedWhite_alpha_(0.2, 1.0).setFill()
-        for col in range(5):
-            NSBezierPath.fillRect_(NSMakeRect(3 + col * 3.5, 12, 2.5, 2.5))
-        # 中段キー: 4個（少しずらす）
-        for col in range(4):
-            NSBezierPath.fillRect_(NSMakeRect(4.5 + col * 3.5, 8.5, 2.5, 2.5))
-        # 下段: スペースバー
-        NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
-            NSMakeRect(5, 5.5, 12, 2), 1, 1
-        ).fill()
-        icon.unlockFocus()
-        icon.setTemplate_(True)
-        self.status_item.button().setImage_(icon)
-
-        menu = NSMenu.alloc().init()
-
-        # ObjCランタイムに認識されるデリゲートを使う
-        self._menu_delegate = MenuDelegate.alloc().init()
-        self._menu_delegate._keyboard = self
-
-        self._toggle_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            'Show Keyboard', 'toggleKeyboard:', ''
-        )
-        self._toggle_item.setTarget_(self._menu_delegate)
-        menu.addItem_(self._toggle_item)
-        self.status_item.setMenu_(menu)
+        self.panel.orderFront_(None)
 
     def cycle_theme(self):
         self.theme_idx = (self.theme_idx + 1) % len(THEMES)
         self.view.setNeedsDisplay_(True)
 
-    def toggle(self):
-        """キーボードの表示/非表示を切り替え"""
-        if self._visible:
-            self.panel.orderOut_(None)
-            self._visible = False
-            self._toggle_item.setTitle_('Show Keyboard')
-        else:
-            self.panel.orderFront_(None)
-            self._visible = True
-            self._toggle_item.setTitle_('Hide Keyboard')
-
     def minimize(self):
-        """パネルを隠す（メニューバーから復帰）"""
+        """パネルを隠す"""
         self.panel.orderOut_(None)
-        self._visible = False
-        self._toggle_item.setTitle_('Show Keyboard')
 
     def close(self):
         NSApplication.sharedApplication().terminate_(None)
@@ -645,11 +557,10 @@ if __name__ == '__main__':
     # コマンドライン引数
     _init_x = None
     _init_y = None
-    _hidden = '--hidden' in sys.argv
     args = sys.argv[1:]
     for j in range(len(args) - 1):
         if args[j] == '--x':
             _init_x = float(args[j + 1])
         elif args[j] == '--y':
             _init_y = float(args[j + 1])
-    TransparentKeyboardMac(init_x=_init_x, init_y=_init_y, hidden=_hidden).run()
+    TransparentKeyboardMac(init_x=_init_x, init_y=_init_y).run()
