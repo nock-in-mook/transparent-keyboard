@@ -31,6 +31,7 @@ from AppKit import (
     NSWindowStyleMaskUtilityWindow,
     NSFloatingWindowLevel,
     NSApplicationActivationPolicyRegular,
+    NSApplicationActivationPolicyAccessory,
     NSAttributedString,
     NSForegroundColorAttributeName,
     NSFontAttributeName,
@@ -488,9 +489,9 @@ class MenuDelegate(NSObject):
         return self
 
     @objc.IBAction
-    def showKeyboard_(self, sender):
+    def toggleKeyboard_(self, sender):
         if self._keyboard:
-            self._keyboard.panel.orderFront_(None)
+            self._keyboard.toggle()
 
     @objc.IBAction
     def quitApp_(self, sender):
@@ -504,19 +505,18 @@ class TransparentKeyboardMac:
     WIDTH = 312
     HEIGHT = 160   # header(18) + 5 rows(28*5) + padding
 
-    def __init__(self, init_x=None, init_y=None):
+    def __init__(self, init_x=None, init_y=None, hidden=False):
         self.theme_idx = 0
+        self._visible = False
         self.app = NSApplication.sharedApplication()
-        # Dockに表示（最小化から復帰可能）
-        self.app.setActivationPolicy_(NSApplicationActivationPolicyRegular)
+        # Dockに表示しない（メニューバー常駐のみ）
+        self.app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
 
         # 位置決定: 引数指定があればそこ、なければ画面下部中央
         screen = NSScreen.mainScreen()
         sf = screen.visibleFrame()
         if init_x is not None and init_y is not None:
             x = init_x
-            # init_yはターミナル下端（macOS座標）= キーボードの上端
-            # NSMakeRectのyはウィンドウ下端なので、高さ分引く
             y = init_y - self.HEIGHT
         else:
             x = sf.origin.x + (sf.size.width - self.WIDTH) / 2
@@ -547,7 +547,10 @@ class TransparentKeyboardMac:
         # メニューバーアイコン
         self._setup_menu_bar()
 
-        self.panel.orderFront_(None)
+        # 初期表示（--hidden でなければ表示）
+        if not hidden:
+            self.panel.orderFront_(None)
+            self._visible = True
 
     def _setup_menu_bar(self):
         """メニューバーに常駐アイコン表示"""
@@ -562,11 +565,11 @@ class TransparentKeyboardMac:
         self._menu_delegate = MenuDelegate.alloc().init()
         self._menu_delegate._keyboard = self
 
-        show_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            'Show Keyboard', 'showKeyboard:', ''
+        self._toggle_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            'Show Keyboard', 'toggleKeyboard:', ''
         )
-        show_item.setTarget_(self._menu_delegate)
-        menu.addItem_(show_item)
+        self._toggle_item.setTarget_(self._menu_delegate)
+        menu.addItem_(self._toggle_item)
 
         menu.addItem_(NSMenuItem.separatorItem())
 
@@ -581,9 +584,22 @@ class TransparentKeyboardMac:
         self.theme_idx = (self.theme_idx + 1) % len(THEMES)
         self.view.setNeedsDisplay_(True)
 
+    def toggle(self):
+        """キーボードの表示/非表示を切り替え"""
+        if self._visible:
+            self.panel.orderOut_(None)
+            self._visible = False
+            self._toggle_item.setTitle_('Show Keyboard')
+        else:
+            self.panel.orderFront_(None)
+            self._visible = True
+            self._toggle_item.setTitle_('Hide Keyboard')
+
     def minimize(self):
-        """パネルを隠す（メニューバーのShow Keyboardで復帰）"""
+        """パネルを隠す（メニューバーから復帰）"""
         self.panel.orderOut_(None)
+        self._visible = False
+        self._toggle_item.setTitle_('Show Keyboard')
 
     def close(self):
         NSApplication.sharedApplication().terminate_(None)
@@ -609,13 +625,14 @@ if __name__ == '__main__':
     if _lock_file is None:
         sys.exit(0)  # 全スロット使用中 → 起動しない
 
-    # --x, --y で初期位置を指定可能（即ランチャーから渡される）
+    # コマンドライン引数
     _init_x = None
     _init_y = None
+    _hidden = '--hidden' in sys.argv
     args = sys.argv[1:]
     for j in range(len(args) - 1):
         if args[j] == '--x':
             _init_x = float(args[j + 1])
         elif args[j] == '--y':
             _init_y = float(args[j + 1])
-    TransparentKeyboardMac(init_x=_init_x, init_y=_init_y).run()
+    TransparentKeyboardMac(init_x=_init_x, init_y=_init_y, hidden=_hidden).run()
