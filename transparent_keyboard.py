@@ -311,6 +311,7 @@ class TransparentKeyboard:
         # タスクバークリック最小化: マウス位置で判定（起動直後は無効）
         self._taskbar_guard_ready = False
         self._taskbar_bound = False
+        self.root.bind('<Map>', self._on_restore)  # 最小化→復元時にガードを一時無効化
         self.root.after(500, self._enable_taskbar_guard)
         self._poll()
 
@@ -862,7 +863,13 @@ class TransparentKeyboard:
 
     def _tray_show(self):
         """トレイからの表示復元"""
+        self._taskbar_guard_ready = False  # 復元直後の再最小化を防止
         self.root.deiconify()
+        # 一瞬だけ最前面に出して確実に表示
+        self.root.attributes('-topmost', True)
+        self.root.update_idletasks()
+        self.root.attributes('-topmost', False)
+        self.root.after(500, self._enable_taskbar_guard)
 
     def _on_close(self):
         """閉じるボタン: トレイアイコンも停止して終了"""
