@@ -245,7 +245,7 @@ class KeyboardView(NSView):
         """ボタン配置（動的サイズ対応）"""
         W = self.frame().size.width
         H = self.frame().size.height
-        HDR_H = 18
+        HDR_H = 36
         BTN_H = int((H - HDR_H) / 5)
         PAD = 1
         ENTER_W = max(36, int(W * 0.115))
@@ -255,16 +255,17 @@ class KeyboardView(NSView):
 
         # --- ヘッダ ---
         self._header_rect = NSMakeRect(0, 0, W, HDR_H)
+        btn_y = (HDR_H - 16) / 2
         self._buttons.append((
-            NSMakeRect(PAD, 1, 16, HDR_H - 2),
+            NSMakeRect(PAD, btn_y, 16, 16),
             '●', lambda: self._keyboard.cycle_theme(), 'theme'
         ))
         self._buttons.append((
-            NSMakeRect(W - 38, 1, 16, HDR_H - 2),
+            NSMakeRect(W - 38, btn_y, 16, 16),
             '━', lambda: self._keyboard.minimize(), 'minimize'
         ))
         self._buttons.append((
-            NSMakeRect(W - 18, 1, 16, HDR_H - 2),
+            NSMakeRect(W - 18, btn_y, 16, 16),
             '✕', lambda: self._keyboard.close(), 'close'
         ))
 
@@ -287,9 +288,10 @@ class KeyboardView(NSView):
             ))
         y += BTN_H
 
-        # --- Row 1: 1 2 3 4 5 | 📷↑ 英/日 ---
+        # --- Row 1-2: 数字キー + 📷↑(2行スパン) + 英/日 + PrScr ---
         num_w = body_w * 0.6 / 5
         func_w = body_w * 0.4 / 2
+        # Row 1: 1 2 3 4 5 | 📷↑(2行) | 英/日
         x = PAD
         for n in '12345':
             self._buttons.append((
@@ -297,9 +299,11 @@ class KeyboardView(NSView):
                 n, lambda c=n: type_text(c), 'num'
             ))
             x += num_w
+        # 📷↑: 2行にまたがる
+        cam_x = x
         self._buttons.append((
-            NSMakeRect(x, y + PAD, func_w - PAD, BTN_H - PAD),
-            '📷↑', lambda: paste_latest_screenshot(), 'key'
+            NSMakeRect(cam_x, y + PAD, func_w - PAD, BTN_H * 2 - PAD),
+            '🎞↑', lambda: paste_latest_screenshot(), 'accent'
         ))
         x += func_w
         self._buttons.append((
@@ -308,7 +312,7 @@ class KeyboardView(NSView):
         ))
         y += BTN_H
 
-        # --- Row 2: 6 7 8 9 0 | 📁 PrScr ---
+        # Row 2: 6 7 8 9 0 | (📷↑が占有) | PrScr
         x = PAD
         for n in '67890':
             self._buttons.append((
@@ -316,14 +320,11 @@ class KeyboardView(NSView):
                 n, lambda c=n: type_text(c), 'num'
             ))
             x += num_w
-        self._buttons.append((
-            NSMakeRect(x, y + PAD, func_w - PAD, BTN_H - PAD),
-            '📁', lambda: open_screenshot_folder(), 'key'
-        ))
+        # col5は📷↑が占有（スキップ）
         x += func_w
         self._buttons.append((
             NSMakeRect(x, y + PAD, func_w - PAD, BTN_H - PAD),
-            'PrScr', lambda: take_screenshot(), 'key'
+            'PrScr', lambda: take_screenshot(), 'accent'
         ))
         y += BTN_H
 
@@ -358,7 +359,7 @@ class KeyboardView(NSView):
 
         # --- Row 4: Term ⌘A /remote /resume ---
         cmd_keys = [
-            ('🪟🪟',     lambda: bring_terminals_to_front(),           0.14),
+            ('Term',      lambda: bring_terminals_to_front(),           0.14),
             ('⌘A',       lambda: send_key(KC['a'], MOD_CMD),          0.14),
             ('/remote',  lambda: type_text_enter('/remote-control'),   0.38),
             ('/resume',  lambda: type_text_enter('/resume'),           0.34),
@@ -394,6 +395,42 @@ class KeyboardView(NSView):
         rgb(*theme[2]).setFill()
         NSBezierPath.fillRect_(self._header_rect)
 
+        # ヘッダにフォルダ名を角丸枠付きで表示
+        if self._keyboard and self._keyboard.title:
+            title_attrs = {
+                NSForegroundColorAttributeName: rgb(1.0, 1.0, 1.0, 0.95),
+                NSFontAttributeName: NSFont.boldSystemFontOfSize_(14),
+            }
+            title_para = NSMutableParagraphStyle.alloc().init()
+            title_para.setAlignment_(NSCenterTextAlignment)
+            title_attrs[NSParagraphStyleAttributeName] = title_para
+            title_str = NSAttributedString.alloc().initWithString_attributes_(
+                self._keyboard.title, title_attrs
+            )
+            ts = title_str.size()
+            hdr = self._header_rect
+            # 角丸枠の背景（BTN_BG色）
+            pad_x, pad_y = 10, 3
+            box_w = ts.width + pad_x * 2
+            box_h = ts.height + pad_y * 2
+            box_x = hdr.origin.x + (hdr.size.width - box_w) / 2
+            box_y = hdr.origin.y + (hdr.size.height - box_h) / 2
+            box_rect = NSMakeRect(box_x, box_y, box_w, box_h)
+            rgb(*BTN_BG).setFill()
+            NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+                box_rect, 5, 5
+            ).fill()
+            # テキスト描画
+            tx = box_x + pad_x
+            ty = box_y + pad_y
+            title_str.drawAtPoint_(NSMakePoint(tx, ty))
+
+        # アクセント色（テーマのヘッダ色を暗くした色）
+        hdr_r, hdr_g, hdr_b = theme[2]
+        accent_bg = rgb(hdr_r * 0.4, hdr_g * 0.4, hdr_b * 0.4)
+        bg_r, bg_g, bg_b = theme[1]
+        accent_active = rgb(bg_r * 0.65, bg_g * 0.65, bg_b * 0.65)
+
         # 各ボタン
         for i, (rect, label, action, style) in enumerate(self._buttons):
             if style == 'theme':
@@ -405,11 +442,13 @@ class KeyboardView(NSView):
                 opposite_idx = (self._keyboard.theme_idx + 3) % len(THEMES)
                 color = rgb(*THEMES[opposite_idx][2])
             elif i == self._pressed_idx:
-                color = rgb(*BTN_ACTIVE)
+                color = accent_active if style == 'accent' else rgb(*BTN_ACTIVE)
             elif style == 'enter':
                 color = rgb(*ENTER_BG)
             elif style == 'cmd':
                 color = rgb(*CMD_BG)
+            elif style == 'accent':
+                color = accent_bg
             else:
                 color = rgb(*BTN_BG)
 
@@ -419,12 +458,14 @@ class KeyboardView(NSView):
             ).fill()
 
             # テキスト描画
-            font_size = 12 if style in ('num', 'enter') else 10
+            font_size = 12 if style in ('accent', 'enter') else 10
             if style in ('theme', 'close', 'minimize'):
                 font_size = 9
+            # 🎞↑ボタンは大きめフォント
+            if label == '🎞↑':
+                font_size = 18
 
-            # 🪟🪟ボタンは白文字で目立たせる
-            fg_color = rgb(1.0, 1.0, 1.0) if label == '🪟🪟' else rgb(*BTN_FG)
+            fg_color = rgb(*BTN_FG)
 
             attrs = {
                 NSForegroundColorAttributeName: fg_color,
@@ -502,9 +543,10 @@ class TransparentKeyboardMac:
     # スロットごとの初期テーマ（pink, green, yellow, blue）
     SLOT_THEMES = [0, 2, 5, 1]
 
-    def __init__(self, init_x=None, init_y=None, width=None, height=None, slot=0):
+    def __init__(self, init_x=None, init_y=None, width=None, height=None, slot=0, title=''):
         self.width = width or self.DEFAULT_WIDTH
         self.height = height or self.DEFAULT_HEIGHT
+        self.title = title  # ヘッダに表示するフォルダ名
         self.theme_idx = self.SLOT_THEMES[slot] if slot < len(self.SLOT_THEMES) else 0
         self.app = NSApplication.sharedApplication()
         # Dockに表示しない
@@ -590,6 +632,7 @@ if __name__ == '__main__':
     _width = None
     _height = None
     _slot = 0
+    _title = ''
     args = sys.argv[1:]
     for j in range(len(args) - 1):
         if args[j] == '--x':
@@ -602,7 +645,9 @@ if __name__ == '__main__':
             _height = int(float(args[j + 1]))
         elif args[j] == '--slot':
             _slot = int(args[j + 1])
+        elif args[j] == '--title':
+            _title = args[j + 1]
     TransparentKeyboardMac(
         init_x=_init_x, init_y=_init_y,
-        width=_width, height=_height, slot=_slot
+        width=_width, height=_height, slot=_slot, title=_title
     ).run()
