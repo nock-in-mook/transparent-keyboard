@@ -574,14 +574,17 @@ class TransparentKeyboard:
         # キーボードを配置（影の内側幅、ただし右端は影を無視して寄せる）
         kb_w = win_w - self.SHADOW_INSET * 2
         kb_y = margin_top + term_h - self.SHADOW_INSET  # ターミナルの影に食い込ませる
+        # キーボードを右端のターミナルから順に割り当て
         for i, (_, hwnd) in enumerate(kb_sorted):
-            if i < n_wt:
-                # ターミナル実体の右端に合わせる
-                kx = wt_positions[i] + self.SHADOW_INSET
+            # i=0 → 右端ターミナル, i=1 → その左隣, ...
+            wt_idx = n_wt - 1 - i
+            if wt_idx >= 0:
+                kx = wt_positions[wt_idx] + self.SHADOW_INSET
             else:
+                # ターミナルより多いキーボードは左端の更に左へ
                 if n_wt > 0:
                     kx = wt_positions[0] + self.SHADOW_INSET - kb_w
-                    extra = i - n_wt
+                    extra = -wt_idx - 1
                     kx -= extra * kb_w
                 else:
                     kx = sw - kb_w - i * kb_w
@@ -886,4 +889,15 @@ class TransparentKeyboard:
 
 
 if __name__ == '__main__':
-    TransparentKeyboard(slot=_instance_slot).run()
+    kb = TransparentKeyboard(slot=_instance_slot)
+    # スロット0（最初の起動）: ターミナル数に合わせて追加インスタンスを自動起動
+    if _instance_slot == 0:
+        n_wt = len(TransparentKeyboard._find_wt_windows())
+        if n_wt > 1:
+            exe = sys.executable if getattr(sys, 'frozen', False) else None
+            for _ in range(n_wt - 1):
+                if exe:
+                    subprocess.Popen([exe])
+                else:
+                    subprocess.Popen([sys.executable, __file__])
+    kb.run()
