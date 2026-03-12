@@ -17,18 +17,17 @@ import threading
 # AppUserModelIDを設定（タスクバーでアプリを正しく識別し、ピン留めを可能にする）
 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("TransparentKeyboard.App.1")
 
-# 最大3インスタンスまで許可（スロット制で管理）
+# スロット管理（即ランチャーが起動数を制御、ここでは空きスロットを取るだけ）
 MAX_INSTANCES = 3
 _instance_slot = -1
 _slot_mutex = None
 for i in range(MAX_INSTANCES):
     m = ctypes.windll.kernel32.CreateMutexW(None, True, f"TransparentKeyboard_Slot_{i}")
-    if ctypes.windll.kernel32.GetLastError() != 183:  # スロット確保成功
+    if ctypes.windll.kernel32.GetLastError() != 183:
         _instance_slot = i
         _slot_mutex = m
         break
 if _instance_slot == -1:
-    # 3つとも埋まっている
     sys.exit(0)
 
 # Windows API
@@ -890,14 +889,5 @@ class TransparentKeyboard:
 
 if __name__ == '__main__':
     kb = TransparentKeyboard(slot=_instance_slot)
-    # スロット0（最初の起動）: ターミナル数に合わせて追加インスタンスを自動起動
-    if _instance_slot == 0:
-        n_wt = len(TransparentKeyboard._find_wt_windows())
-        if n_wt > 1:
-            exe = sys.executable if getattr(sys, 'frozen', False) else None
-            for _ in range(n_wt - 1):
-                if exe:
-                    subprocess.Popen([exe])
-                else:
-                    subprocess.Popen([sys.executable, __file__])
+    # 自動起動は即ランチャー側で制御するため、ここでは行わない
     kb.run()
