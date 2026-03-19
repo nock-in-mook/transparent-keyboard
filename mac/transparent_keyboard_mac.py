@@ -278,7 +278,7 @@ class KeyboardView(NSView):
             ('↓',     lambda: send_key(KC['down'])),
             ('↑',     lambda: send_key(KC['up'])),
             ('→',     lambda: send_key(KC['right'])),
-            ('Apps',  lambda: open_apps_folder()),
+            ('/exit', lambda: type_text_enter('/exit')),
         ]
         bw = body_w / len(row0)
         for i, (label, action) in enumerate(row0):
