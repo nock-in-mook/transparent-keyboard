@@ -109,19 +109,32 @@ def type_text_enter(text):
     send_key(KC['return'])
 
 
+def _get_current_input_source():
+    """ctypes経由でTIS APIから現在の入力ソースIDを取得"""
+    import ctypes
+    carbon = ctypes.cdll.LoadLibrary('/System/Library/Frameworks/Carbon.framework/Carbon')
+    cf = ctypes.cdll.LoadLibrary('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation')
+    carbon.TISCopyCurrentKeyboardInputSource.restype = ctypes.c_void_p
+    carbon.TISGetInputSourceProperty.restype = ctypes.c_void_p
+    carbon.TISGetInputSourceProperty.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    cf.CFStringCreateWithCString.restype = ctypes.c_void_p
+    cf.CFStringCreateWithCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32]
+    cf.CFStringGetCStringPtr.restype = ctypes.c_char_p
+    cf.CFStringGetCStringPtr.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+    kTISPropertyInputSourceID = cf.CFStringCreateWithCString(None, b'TISPropertyInputSourceID', 0x08000100)
+    current = carbon.TISCopyCurrentKeyboardInputSource()
+    source_id = carbon.TISGetInputSourceProperty(current, kTISPropertyInputSourceID)
+    result = cf.CFStringGetCStringPtr(source_id, 0x08000100)
+    return result.decode() if result else ''
+
+
 def toggle_input_source():
     """英数/かなをトグル切り替え（ポップアップなし）"""
-    # defaultsコマンドで現在の入力ソースIDを取得
-    result = subprocess.run(
-        ['defaults', 'read', os.path.expanduser('~/Library/Preferences/com.apple.HIToolbox'),
-         'AppleCurrentKeyboardLayoutInputSourceID'],
-        capture_output=True, text=True, timeout=2
-    )
-    current = result.stdout.strip()
-    if 'ABC' in current or 'US' in current:
-        send_key(104)  # かなキー
+    current = _get_current_input_source()
+    if 'Japanese' in current or 'Kotoeri' in current:
+        send_key(102)  # 英数キー（日本語→英語へ）
     else:
-        send_key(102)  # 英数キー
+        send_key(104)  # かなキー（英語→日本語へ）
 
 
 def get_screenshot_dir():
