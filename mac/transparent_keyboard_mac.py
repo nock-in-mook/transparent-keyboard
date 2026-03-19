@@ -111,16 +111,17 @@ def type_text_enter(text):
 
 def toggle_input_source():
     """英数/かなをトグル切り替え（ポップアップなし）"""
-    from InputMethodKit import TISCopyCurrentKeyboardInputSource, TISGetInputSourceProperty, kTISPropertyInputSourceID
-    from CoreFoundation import CFStringRef
-    current = TISCopyCurrentKeyboardInputSource()
-    source_id = TISGetInputSourceProperty(current, kTISPropertyInputSourceID)
-    # 現在が英語系なら「かな」キー(104)、それ以外なら「英数」キー(102)を送る
-    if source_id and 'ABC' in str(source_id):
-        key_code = 104  # かな
+    # defaultsコマンドで現在の入力ソースIDを取得
+    result = subprocess.run(
+        ['defaults', 'read', os.path.expanduser('~/Library/Preferences/com.apple.HIToolbox'),
+         'AppleCurrentKeyboardLayoutInputSourceID'],
+        capture_output=True, text=True, timeout=2
+    )
+    current = result.stdout.strip()
+    if 'ABC' in current or 'US' in current:
+        send_key(104)  # かなキー
     else:
-        key_code = 102  # 英数
-    send_key(key_code)
+        send_key(102)  # 英数キー
 
 
 def get_screenshot_dir():
