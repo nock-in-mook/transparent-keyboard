@@ -109,6 +109,16 @@ def type_text_enter(text):
     send_key(KC['return'])
 
 
+def toggle_input_source():
+    """英数/かなをトグル切り替え（ポップアップなし）"""
+    script = '''
+    tell application "System Events"
+        key code 102
+    end tell
+    '''
+    subprocess.Popen(['osascript', '-e', script])
+
+
 def get_screenshot_dir():
     """スクショ保存先ディレクトリを返す"""
     ss_dir = os.path.join(tempfile.gettempdir(), 'claude_screenshots')
@@ -308,7 +318,7 @@ class KeyboardView(NSView):
         x += func_w
         self._buttons.append((
             NSMakeRect(x, y + PAD, func_w - PAD, BTN_H - PAD),
-            '英/日', lambda: send_key(KC['space'], MOD_CTRL), 'key'
+            '英/日', lambda: toggle_input_source(), 'key'
         ))
         y += BTN_H
 
