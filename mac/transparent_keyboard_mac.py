@@ -111,12 +111,16 @@ def type_text_enter(text):
 
 def toggle_input_source():
     """英数/かなをトグル切り替え（ポップアップなし）"""
-    script = '''
-    tell application "System Events"
-        key code 102
-    end tell
-    '''
-    subprocess.Popen(['osascript', '-e', script])
+    from InputMethodKit import TISCopyCurrentKeyboardInputSource, TISGetInputSourceProperty, kTISPropertyInputSourceID
+    from CoreFoundation import CFStringRef
+    current = TISCopyCurrentKeyboardInputSource()
+    source_id = TISGetInputSourceProperty(current, kTISPropertyInputSourceID)
+    # 現在が英語系なら「かな」キー(104)、それ以外なら「英数」キー(102)を送る
+    if source_id and 'ABC' in str(source_id):
+        key_code = 104  # かな
+    else:
+        key_code = 102  # 英数
+    send_key(key_code)
 
 
 def get_screenshot_dir():
