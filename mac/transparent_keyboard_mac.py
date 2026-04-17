@@ -18,6 +18,7 @@ import tempfile
 import datetime
 import fcntl
 import json
+import threading
 
 import objc
 from Foundation import NSObject, NSMakeRect, NSMakePoint, NSPointInRect, NSTimer
@@ -170,11 +171,38 @@ def get_screenshot_dir():
 
 
 def take_screenshot():
-    """screencapture -i で範囲選択スクショを撮って即保存"""
+    """screencapture -i で範囲選択スクショを撮って即保存。
+    別スレッドでscreencaptureを待ち、結果を _screenshot.log に記録する。
+    「範囲を囲んだのに保存されない」症状の再現時に原因特定するため。"""
     ss_dir = get_screenshot_dir()
-    ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    # マイクロ秒付きでファイル名衝突を防ぐ（連打しても独立保存）
+    ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')
     path = os.path.join(ss_dir, f'ss_{ts}.png')
-    subprocess.Popen(['screencapture', '-i', path])
+    log_path = os.path.join(ss_dir, '_screenshot.log')
+
+    def _run_and_log():
+        started = datetime.datetime.now()
+        try:
+            proc = subprocess.run(
+                ['screencapture', '-i', path],
+                capture_output=True, timeout=180
+            )
+            saved = os.path.exists(path)
+            size = os.path.getsize(path) if saved else 0
+            stderr = proc.stderr.decode('utf-8', errors='replace').strip()
+            line = (f'[{started:%Y-%m-%d %H:%M:%S}] rc={proc.returncode} '
+                    f'saved={saved} size={size} '
+                    f'duration={((datetime.datetime.now()-started).total_seconds()):.1f}s '
+                    f'stderr={stderr!r} path={path}\n')
+        except Exception as e:
+            line = f'[{started:%Y-%m-%d %H:%M:%S}] EXCEPTION: {type(e).__name__}: {e} path={path}\n'
+        try:
+            with open(log_path, 'a', encoding='utf-8') as f:
+                f.write(line)
+        except Exception:
+            pass
+
+    threading.Thread(target=_run_and_log, daemon=True).start()
 
 
 def paste_latest_screenshot():
