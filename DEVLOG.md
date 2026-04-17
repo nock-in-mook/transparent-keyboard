@@ -22,6 +22,15 @@
 
 **注**: CGEventPost より osascript の方がプロセス起動コスト分わずかに遅いが、ボタン押下毎の単発送信なので体感差なし。Quartz の CGEvent 系 import は将来の参照用にそのまま残してある。
 
+### 同日追記: type_text を pbcopy + Cmd+V のペースト方式に変更
+
+osascript の `keystroke` 方式に切り替えたら、**日本語IME ON 時に `/exit` が `/えぃｔ` に化ける**バグが発覚。
+- 原因: AppleScript の `keystroke` は IME を経由する。CGEventPost + `CGEventKeyboardSetUnicodeString` は IME バイパスだったので問題なかった
+- 対策: `type_text()` を `pbpaste`（退避）→ 英数キー → `pbcopy`（テキスト設定）→ `Cmd+V`（ペースト）→ `pbcopy`（クリップボード復元）に変更
+- メリット: IME を完全回避、漢字・絵文字を含む任意文字列を安全に送信可能、改行も含めて1回のペーストで完結
+- 副作用: ユーザーのクリップボードを 150ms 借用するが、終了時に元の内容を復元するので実害なし
+- `send_key()` は `key code` 経由で IME バイパスされるので変更不要
+
 ## 2026-02-27 - v1.0 初期実装
 - tkinter + ctypes でフォーカスを奪わない透明キーボードを実装
 - SendInput API でキー送信

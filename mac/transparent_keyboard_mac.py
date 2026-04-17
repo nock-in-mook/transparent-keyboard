@@ -105,16 +105,26 @@ def send_key(keycode, flags=0):
 
 
 def type_text(text):
-    """テキストを送信（osascript 経由、改行は return キーで別送信）"""
+    """テキストを送信（pbcopy + Cmd+V のペースト方式、IME回避）。
+    osascript の keystroke は IME を経由するので、日本語入力ON時に
+    "/exit" が "/えぃｔ" に化ける。クリップボード経由のペーストなら
+    IME を完全に回避でき、漢字・絵文字を含む任意文字列を安全に送れる。
+    元のクリップボード内容は退避→復元する。"""
     if not text:
         return
-    parts = text.split('\n')
-    for i, part in enumerate(parts):
-        if part:
-            escaped = part.replace('\\', '\\\\').replace('"', '\\"')
-            _osascript(f'tell application "System Events" to keystroke "{escaped}"')
-        if i < len(parts) - 1:
-            _osascript('tell application "System Events" to key code 36')
+    # 元のクリップボードを退避
+    saved = subprocess.run(['pbpaste'], capture_output=True).stdout
+    # 万一の IME バッファ干渉を避けるため英数モードに切替
+    _osascript('tell application "System Events" to key code 102')
+    # テキストをクリップボードに設定
+    p = subprocess.Popen(['pbcopy'], stdin=subprocess.PIPE)
+    p.communicate(input=text.encode('utf-8'))
+    # Cmd+V でペースト
+    _osascript('tell application "System Events" to keystroke "v" using {command down}')
+    # ペースト完了を待ってから元のクリップボードに戻す
+    time.sleep(0.15)
+    p = subprocess.Popen(['pbcopy'], stdin=subprocess.PIPE)
+    p.communicate(input=saved)
 
 
 def type_text_enter(text):
