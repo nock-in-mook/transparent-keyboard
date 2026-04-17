@@ -17,6 +17,7 @@ import sys
 import tempfile
 import datetime
 import fcntl
+import json
 
 import objc
 from Foundation import NSObject, NSMakeRect, NSMakePoint, NSPointInRect, NSTimer
@@ -79,27 +80,41 @@ MOD_CTRL = kCGEventFlagMaskControl
 # キー送信
 # =============================================
 
+def _osascript(script):
+    """AppleScript を osascript で実行。
+    CGEventPost と違い別プロセス起動なので、Pythonプロセス自体の
+    アクセシビリティ権限ではなく System Events の権限が使われる。
+    macOS の TCC キャッシュ問題で CGEventPost が無言で失敗する症状の回避策。"""
+    subprocess.run(['osascript', '-e', script], check=False, capture_output=True)
+
+
 def send_key(keycode, flags=0):
-    """キーを押して離す"""
-    down = CGEventCreateKeyboardEvent(None, keycode, True)
-    up = CGEventCreateKeyboardEvent(None, keycode, False)
-    if flags:
-        CGEventSetFlags(down, flags)
-        CGEventSetFlags(up, flags)
-    CGEventPost(kCGHIDEventTap, down)
-    CGEventPost(kCGHIDEventTap, up)
+    """キーを押して離す（osascript 経由）"""
+    modifiers = []
+    if flags & MOD_CMD:
+        modifiers.append('command down')
+    if flags & MOD_SHIFT:
+        modifiers.append('shift down')
+    if flags & MOD_CTRL:
+        modifiers.append('control down')
+    if modifiers:
+        script = f'tell application "System Events" to key code {keycode} using {{{", ".join(modifiers)}}}'
+    else:
+        script = f'tell application "System Events" to key code {keycode}'
+    _osascript(script)
 
 
 def type_text(text):
-    """テキストをUnicode入力として1文字ずつ送信"""
-    for ch in text:
-        down = CGEventCreateKeyboardEvent(None, 0, True)
-        up = CGEventCreateKeyboardEvent(None, 0, False)
-        CGEventKeyboardSetUnicodeString(down, 1, ch)
-        CGEventKeyboardSetUnicodeString(up, 1, ch)
-        CGEventPost(kCGHIDEventTap, down)
-        CGEventPost(kCGHIDEventTap, up)
-        time.sleep(0.005)
+    """テキストを送信（osascript 経由、改行は return キーで別送信）"""
+    if not text:
+        return
+    parts = text.split('\n')
+    for i, part in enumerate(parts):
+        if part:
+            escaped = part.replace('\\', '\\\\').replace('"', '\\"')
+            _osascript(f'tell application "System Events" to keystroke "{escaped}"')
+        if i < len(parts) - 1:
+            _osascript('tell application "System Events" to key code 36')
 
 
 def type_text_enter(text):
@@ -336,7 +351,7 @@ class KeyboardView(NSView):
         x += func_w
         self._buttons.append((
             NSMakeRect(x, y + PAD, func_w - PAD, BTN_H - PAD),
-            '英/日', lambda: toggle_input_source(), 'key'
+            '📁SS', lambda: open_screenshot_folder(), 'key'
         ))
         y += BTN_H
 
@@ -549,6 +564,9 @@ class KeyboardView(NSView):
         if self._dragging:
             self._dragging = False
             self._drag_start = None
+            # ドラッグ終了時に位置を更新
+            if hasattr(self._keyboard, '_write_bounds'):
+                self._keyboard._write_bounds()
             return
 
         point = self.convertPoint_fromView_(event.locationInWindow(), None)
@@ -576,6 +594,7 @@ class TransparentKeyboardMac:
         self.width = width or self.DEFAULT_WIDTH
         self.height = height or self.DEFAULT_HEIGHT
         self.title = title  # ヘッダに表示するフォルダ名
+        self.slot = slot
         self.theme_idx = self.SLOT_THEMES[slot] if slot < len(self.SLOT_THEMES) else 0
         self.app = NSApplication.sharedApplication()
         # Dockに表示しない
@@ -606,6 +625,8 @@ class TransparentKeyboardMac:
         self.panel.setLevel_(NSFloatingWindowLevel)
         self.panel.setAlphaValue_(0.8)
         self.panel.setHasShadow_(True)
+        self.panel.setIgnoresMouseEvents_(False)
+        self.panel.setAcceptsMouseMovedEvents_(True)
 
         # キーボードビュー
         content_rect = NSMakeRect(0, 0, self.width, self.height)
@@ -614,6 +635,9 @@ class TransparentKeyboardMac:
         self.panel.setContentView_(self.view)
 
         self.panel.orderFront_(None)
+
+        # 位置を書き出す（Hammerspoon/即ランチャーが除外判定に使う）
+        self._write_bounds()
 
         # 2秒後にフローティングレベルを解除（最前面は起動時だけ）
         self._level_invoker = _Invoker.alloc().initWithBlock_(
@@ -631,7 +655,18 @@ class TransparentKeyboardMac:
         """パネルを隠す"""
         self.panel.orderOut_(None)
 
+    def _write_bounds(self):
+        """パネルのAppKit座標をCG座標（左上原点）に変換して書き出す"""
+        frame = self.panel.frame()
+        screen_h = NSScreen.mainScreen().frame().size.height
+        # AppKitのyは左下原点、CGは左上原点
+        cg_y = screen_h - frame.origin.y - frame.size.height
+        _update_bounds_file(self.slot,
+                            int(frame.origin.x), int(cg_y),
+                            int(frame.size.width), int(frame.size.height))
+
     def close(self):
+        _update_bounds_file(self.slot, 0, 0, 0, 0, remove=True)
         NSApplication.sharedApplication().terminate_(None)
 
     def run(self):
@@ -639,6 +674,31 @@ class TransparentKeyboardMac:
 
 
 MAX_INSTANCES = 4  # 即ランチャーMac版のMAX_TERMINALSと同じ
+BOUNDS_FILE = '/tmp/transparent_keyboard_bounds.json'
+
+
+def _update_bounds_file(slot, x, y, w, h, remove=False):
+    """透明キーボードの位置をファイルに書き出す（即ランチャーが参照して除外判定する）"""
+    lock_path = BOUNDS_FILE + '.lock'
+    try:
+        with open(lock_path, 'w') as lf:
+            fcntl.flock(lf, fcntl.LOCK_EX)
+            data = {}
+            if os.path.exists(BOUNDS_FILE):
+                with open(BOUNDS_FILE, 'r', encoding='utf-8') as f:
+                    try:
+                        data = json.load(f)
+                    except json.JSONDecodeError:
+                        data = {}
+            if remove:
+                data.pop(str(slot), None)
+            else:
+                data[str(slot)] = {'x': x, 'y': y, 'w': w, 'h': h}
+            with open(BOUNDS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False)
+            fcntl.flock(lf, fcntl.LOCK_UN)
+    except Exception:
+        pass
 
 if __name__ == '__main__':
     # 起動上限制御（ロックファイルを3つ用意、空きスロットがあれば起動）
