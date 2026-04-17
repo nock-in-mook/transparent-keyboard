@@ -182,6 +182,7 @@ def take_screenshot():
 
     def _run_and_log():
         started = datetime.datetime.now()
+        saved = False
         try:
             proc = subprocess.run(
                 ['screencapture', '-i', path],
@@ -201,6 +202,13 @@ def take_screenshot():
                 f.write(line)
         except Exception:
             pass
+        # 保存成功したら、直前にフォーカスしていたアプリ（=ターミナル想定）にパスを自動ペースト
+        if saved:
+            time.sleep(0.2)  # screencapture 終了後のフォーカス戻りを待つ
+            try:
+                type_text(path)
+            except Exception:
+                pass
 
     threading.Thread(target=_run_and_log, daemon=True).start()
 
