@@ -170,74 +170,62 @@ def get_screenshot_dir():
     return ss_dir
 
 
-def take_screenshot(keyboard=None):
+_RECOVERY_TRIGGERED = False
+_RECOVERY_TRIGGER_FILE = '/tmp/sokulauncher_restart_requested'
+
+
+def _trigger_recovery():
+    """TCC権限キャッシュ陳腐化で screencapture -i が失敗した時、
+    Hammerspoon に復旧を依頼する（親ランチャーごと再起動してもらう）。
+    自分でlauncher を kill すると、再起動経路が LaunchServices 由来になって
+    TCC chain が再び失効するため、Hammerspoon 経由で起動してもらう設計。
+    1プロセスで1回のみ発火（連打防止）。"""
+    global _RECOVERY_TRIGGERED
+    if _RECOVERY_TRIGGERED:
+        return
+    _RECOVERY_TRIGGERED = True
+    try:
+        with open(_RECOVERY_TRIGGER_FILE, 'w') as f:
+            f.write(str(datetime.datetime.now()))
+    except Exception:
+        pass
+
+
+def take_screenshot():
     """screencapture -i で範囲選択スクショを撮って即保存。
     別スレッドでscreencaptureを待ち、結果を _screenshot.log に記録する。
-    keyboard が渡されたら撮影中はそのウィンドウを非表示にする（透明キーボード
-    自身が画面上にあると screencapture の rect capture が失敗するのを回避）。"""
+    「範囲を囲んだのに保存されない」症状の再現時に原因特定するため。"""
     ss_dir = get_screenshot_dir()
     # マイクロ秒付きでファイル名衝突を防ぐ（連打しても独立保存）
     ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')
     path = os.path.join(ss_dir, f'ss_{ts}.png')
     log_path = os.path.join(ss_dir, '_screenshot.log')
 
-    # キーボードを一旦隠す（メインスレッドで）
-    if keyboard is not None:
-        try:
-            keyboard.panel.performSelectorOnMainThread_withObject_waitUntilDone_(
-                'orderOut:', None, True
-            )
-        except Exception:
-            pass
-
     def _run_and_log():
         started = datetime.datetime.now()
-        stderr_path = path + '.err'
+        saved = False
         try:
-            # start_new_session=True で新しいプロセスグループを作り、NSApplication
-            # を持つ親プロセスから切り離す。親のイベントループや TCC 責任チェーンが
-            # screencapture -i の初期フレーム取得に干渉して "could not create image
-            # from rect" で即死する症状の回避策。
-            proc = subprocess.Popen(
-                ['/usr/sbin/screencapture', '-i', path],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=open(stderr_path, 'wb'),
-                start_new_session=True,
-                close_fds=True,
+            proc = subprocess.run(
+                ['screencapture', '-i', path],
+                capture_output=True, timeout=180
             )
-            rc = proc.wait(timeout=180)
             saved = os.path.exists(path)
             size = os.path.getsize(path) if saved else 0
-            try:
-                with open(stderr_path, 'rb') as f:
-                    stderr = f.read().decode('utf-8', errors='replace').strip()
-            except Exception:
-                stderr = ''
-            line = (f'[{started:%Y-%m-%d %H:%M:%S}] rc={rc} '
+            stderr = proc.stderr.decode('utf-8', errors='replace').strip()
+            line = (f'[{started:%Y-%m-%d %H:%M:%S}] rc={proc.returncode} '
                     f'saved={saved} size={size} '
                     f'duration={((datetime.datetime.now()-started).total_seconds()):.1f}s '
                     f'stderr={stderr!r} path={path}\n')
         except Exception as e:
-            saved = False
             line = f'[{started:%Y-%m-%d %H:%M:%S}] EXCEPTION: {type(e).__name__}: {e} path={path}\n'
-        try:
-            os.remove(stderr_path)
-        except Exception:
-            pass
         try:
             with open(log_path, 'a', encoding='utf-8') as f:
                 f.write(line)
         except Exception:
             pass
-        # キーボードを元に戻す
-        if keyboard is not None:
-            try:
-                keyboard.panel.performSelectorOnMainThread_withObject_waitUntilDone_(
-                    'orderFront:', None, False
-                )
-            except Exception:
-                pass
+        # TCC権限陳腐化検知: 失敗時は launcher ごと自動再起動（1回だけ）
+        if 'could not create image from rect' in line:
+            _trigger_recovery()
         # 保存成功したら、直前にフォーカスしていたアプリ（=ターミナル想定）にパスを自動ペースト
         if saved:
             time.sleep(0.2)  # screencapture 終了後のフォーカス戻りを待つ
@@ -449,7 +437,7 @@ class KeyboardView(NSView):
         x += func_w
         self._buttons.append((
             NSMakeRect(x, y + PAD, func_w - PAD, BTN_H - PAD),
-            'PrScr', lambda: take_screenshot(self._keyboard), 'accent'
+            'PrScr', lambda: take_screenshot(), 'accent'
         ))
         y += BTN_H
 
