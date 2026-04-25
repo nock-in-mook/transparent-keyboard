@@ -470,10 +470,9 @@ class KeyboardView(NSView):
             x += rw
         y += BTN_H
 
-        # --- Row 4: tmux復帰 ⌘A /remote /resume Claude ---
+        # --- Row 4: ⌃A /remote /resume Claude ---
         cmd_keys = [
-            ('tmux',     lambda: type_text_enter('tmux a'),            0.12),
-            ('⌘A',       lambda: send_key(KC['a'], MOD_CMD),          0.12),
+            ('⌃A',       lambda: send_key(KC['a'], MOD_CTRL),         0.24),
             ('/remote',  lambda: type_text_enter('/remote-control'),   0.26),
             ('/resume',  lambda: type_text_enter('/resume'),           0.22),
             ('Claude',   lambda: type_text_enter('claude --dangerously-skip-permissions'), 0.28),
